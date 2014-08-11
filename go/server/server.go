@@ -28,12 +28,12 @@ func main() {
 	// // s.RegisterCodec(json.NewCodec(), "application/json")
 	// s.RegisterCodec(jsonrpc.NewClientCodec(), "application/json")
 	// s.RegisterService(new(BitnetService), "Bitnet")
-	
+
 	// http.Handle("/bitnet", s)
 	// http.ListenAndServe(addr, nil)
 }
 
-type BitnetService struct {}
+type BitnetService struct{}
 
 func (b *BitnetService) GetTokens(args *bitnet.GetTokensArgs, reply *bitnet.GetTokensReply) error {
 	log.Printf("Handling GetTokens\n")

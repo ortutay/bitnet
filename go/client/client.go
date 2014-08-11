@@ -1,11 +1,11 @@
 package main
 
 import (
-	"strings"
-	"fmt"
 	"bitbucket.org/ortutay/bitnet"
+	"fmt"
 	"github.com/gorilla/rpc/json"
 	"net/http"
+	"strings"
 )
 
 func main() {
