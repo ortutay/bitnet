@@ -10,8 +10,8 @@ import (
 
 func main() {
 	addr := "http://localhost:4000/bitnet"
-	args := bitnet.GetTokensArgs{Message: "hello"}
-	data, err := json.EncodeClientRequest("Bitnet.GetTokens", args)
+	args := bitnet.BuyTokensArgs{RawTx: "x", Pub: "x"}
+	data, err := json.EncodeClientRequest("Bitnet.BuyTokens", args)
 	req, err := http.NewRequest("POST", addr, strings.NewReader(string(data)))
 	req.Header.Add("Content-Type", "application/json")
 	fmt.Printf("args: %v\nreq: %v\nerr: %v\n", args, req, err)

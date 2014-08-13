@@ -2,13 +2,10 @@ package main
 
 import (
 	"bitbucket.org/ortutay/bitnet"
-	// "github.com/gorilla/rpc"
-	// "github.com/gorilla/rpc/json"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
-	// "net/rpc/jsonrpc"
 )
 
 func main() {
@@ -23,14 +20,6 @@ func main() {
 		log.Fatal(err)
 	}
 	http.Serve(l, nil)
-
-	// s := rpc.NewServer()
-	// // s.RegisterCodec(json.NewCodec(), "application/json")
-	// s.RegisterCodec(jsonrpc.NewClientCodec(), "application/json")
-	// s.RegisterService(new(BitnetService), "Bitnet")
-
-	// http.Handle("/bitnet", s)
-	// http.ListenAndServe(addr, nil)
 }
 
 type BitnetService struct{}
