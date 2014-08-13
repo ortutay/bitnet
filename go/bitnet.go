@@ -1,9 +1,9 @@
 package bitnet
 
 type TokenTransaction struct {
-	Challenge string // Challenge from the server
-	Amount    int64  // Amount to spend
-	Sig       string // Signature with private key that corresponds to public key storing the tokens
+	Challenge string // Challenge from the server.
+	Amount    int64  // Amount to spend.
+	Sig       string // Signature with private key holding the tokens.
 }
 
 type BuyTokensArgs struct {
