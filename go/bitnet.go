@@ -1,8 +1,14 @@
 package bitnet
 
+type TokenTransaction struct {
+	Challenge string // Challenge from the server
+	Amount    int64  // Amount to spend
+	Sig       string // Signature with private key that corresponds to public key storing the tokens
+}
+
 type BuyTokensArgs struct {
-	RawTx  string // Bitcoin transaction that pays for the tokens.
-	PubKey string // EC pub key where the sever sends tokens.
+	RawTx string // Bitcoin transaction that pays for the tokens.
+	Pub   string // EC pub key where the sever sends tokens.
 }
 
 type BuyTokensReply struct {
@@ -16,10 +22,7 @@ type ChallengeReply struct {
 }
 
 type BurnArgs struct {
-	TokensPubKey string // EC pub key corresponding to tokens to burn.
-	Challenge    string // Challenge string being used for signature.
-	Num          int64  // Number of tokens to burn.
-	Sig          string // Sign with corresponding EC priv key.
+	Transaction TokenTransaction
 }
 
 type BurnReply struct {
