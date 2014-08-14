@@ -8,12 +8,19 @@ import (
 	"net/rpc"
 )
 
+type BitnetService struct {
+	Address bitnet.BitcoinAddress
+}
+
 func main() {
 	addr := "localhost:4000"
 	log.Printf("Listening on %v...\n", addr)
 
-	bitnet := new(BitnetService)
-	rpc.Register(bitnet)
+	btcAddr := bitnet.BitcoinAddress("mrvdXP7dNodDu9YcdrFWzfXomnWNvASGnb")
+	bitnet := BitnetService{
+		Address: btcAddr,
+	}
+	rpc.Register(&bitnet)
 	rpc.HandleHTTP()
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -22,10 +29,7 @@ func main() {
 	http.Serve(l, nil)
 }
 
-type BitnetService struct{}
-
-func (b *BitnetService) GetTokens(args *bitnet.GetTokensArgs, reply *bitnet.GetTokensReply) error {
-	log.Printf("Handling GetTokens\n")
-	reply.Message = "Reply [" + args.Message + "]"
+func (b *BitnetService) BuyTokens(args *bitnet.BuyTokensArgs, reply *bitnet.BuyTokensReply) error {
+	log.Printf("Handling BuyTokens %v\n", args)
 	return nil
 }
