@@ -47,8 +47,8 @@ type RequestPaymentDetailsReply struct {
 }
 
 type BuyTokensArgs struct {
-	RawTx string // Raw bitcoin transaction that pays for the tokens, hex encoded.
-	Pub   string // EC pub key where the sever sends tokens.
+	RawTx  string // Raw bitcoin transaction that pays for the tokens.
+	PubKey string // EC pub key where the sever sends tokens.
 }
 
 type BuyTokensReply struct {
