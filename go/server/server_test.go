@@ -26,6 +26,7 @@ var (
 	uncompressedKeySize = 65
 )
 
+// TODO(ortutay): Move this into github.com/ortutay/helloblock
 type HelloBlockUnspent struct {
 	TxHash       string `json:"txHash"`
 	Index        int    `json:"index"`

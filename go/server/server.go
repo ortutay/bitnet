@@ -10,10 +10,13 @@ import (
 	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 	"github.com/ortutay/helloblock"
+	"github.com/gorilla/rpc"
+	"github.com/gorilla/rpc/json"
 	"log"
-	"net"
+	// "net"
 	"net/http"
-	"net/rpc"
+	// "net/rpc"
+	// "net/rpc/jsonrpc"
 )
 
 type BitnetService struct {
@@ -35,20 +38,19 @@ func main() {
 	helloblock.SetNetwork(helloblock.Testnet)
 	btcAddr := bitnet.BitcoinAddress("mrvdXP7dNodDu9YcdrFWzfXomnWNvASGnb")
 	bitnet := BitnetService{Address: btcAddr}
-	rpc.Register(&bitnet)
-	rpc.HandleHTTP()
-	l, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	http.Serve(l, nil)
+
+	server := rpc.NewServer()
+	server.RegisterCodec(json.NewCodec(), "application/json")
+	server.RegisterService(&bitnet, "Bitnet")
+	http.Handle("/bitnetRPC", server)
+	http.ListenAndServe(addr, nil)
 }
 
 func (b *BitnetService) netParams() *btcnet.Params {
 	return &btcnet.TestNet3Params
 }
 
-func (b *BitnetService) BuyTokens(args *bitnet.BuyTokensArgs, reply *bitnet.BuyTokensReply) error {
+func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, reply *bitnet.BuyTokensReply) error {
 	log.Printf("Handling BuyTokens %v\n", args)
 	txData, err := hex.DecodeString(args.RawTx)
 	if err != nil {
@@ -98,7 +100,7 @@ func (b *BitnetService) BuyTokens(args *bitnet.BuyTokensArgs, reply *bitnet.BuyT
 	// submitted the client's transaction. We should have more handling around
 	// this case.
 	if err := b.Datastore.AddTokens(pubKey, numTokens); err != nil {
-		log.Printf("ERROR: couldn't add tokens in datastore  %v", err)
+		log.Printf("ERROR: couldn't add tokens in datastore %v", err)
 		return errors.New("Transaction was accepted, but error while crediting tokens. Please report.")
 	}
 
