@@ -1,22 +1,31 @@
 package main
 
 import (
-	"errors"
+	"bitbucket.org/ortutay/bitnet"
 	"encoding/hex"
-	"github.com/conformal/btcutil"
+	"errors"
+	"fmt"
+	"github.com/conformal/btcec"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcscript"
+	"github.com/conformal/btcutil"
 	"github.com/ortutay/helloblock"
-	"bitbucket.org/ortutay/bitnet"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
-	"fmt"
 )
 
 type BitnetService struct {
 	Address bitnet.BitcoinAddress
+	Datastore *bitnet.Datastore
+}
+
+func NewBitnetService(address bitnet.BitcoinAddress) *BitnetService {
+	var b BitnetService
+	b.Address = address
+	b.Datastore = bitnet.NewDatastore() 
+	return &b
 }
 
 func main() {
@@ -43,7 +52,7 @@ func (b *BitnetService) BuyTokens(args *bitnet.BuyTokensArgs, reply *bitnet.BuyT
 	log.Printf("Handling BuyTokens %v\n", args)
 	txData, err := hex.DecodeString(args.RawTx)
 	if err != nil {
-		return fmt.Errorf("couldn't decoe hex: %v", err)
+		return errors.New("couldn't decode raw transaction")
 	}
 	tx, err := btcutil.NewTxFromBytes(txData)
 	if err != nil {
@@ -68,6 +77,30 @@ func (b *BitnetService) BuyTokens(args *bitnet.BuyTokensArgs, reply *bitnet.BuyT
 		value += out.Value
 	}
 	numTokens := value * bitnet.TokensPerSatoshi
-	log.Printf("tx value to us: %v -> %v tokens\n", value, numTokens)
+	log.Printf("Tx value to us: %v -> %v tokens\n", value, numTokens)
+
+	data, err := helloblock.Propagate(args.RawTx)
+	if err != nil {
+		return errors.New("bitcoin network did not accept transaction")
+	}
+	log.Printf("Successfully submitted transaction, ID: %v\n", data.Transaction.TxHash)
+
+	pubKeyData, err := hex.DecodeString(args.PubKey)
+	if err != nil {
+		return errors.New("couldn't decode public key")
+	}
+	pubKey, err := btcec.ParsePubKey(pubKeyData, btcec.S256())
+	if err != nil {
+		return errors.New("couldn't decode public key")
+	}
+
+	// TODO(ortutay): Getting an error here is bad, because we have already
+	// submitted the client's transaction. We should have more handling around
+	// this case.
+	if err := b.Datastore.AddTokens(pubKey, numTokens); err != nil {
+		log.Printf("ERROR: couldn't add tokens in datastore  %v", err)
+		return errors.New("Transaction was accepted, but error while crediting tokens. Please report.")
+	}
+
 	return nil
 }

@@ -1,13 +1,13 @@
 package main
 
 import (
-	"os"
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
 	"testing"
 
 	"bitbucket.org/ortutay/bitnet"
@@ -50,8 +50,10 @@ type HelloBlockFaucetReply struct {
 
 func TestBuyTokens(t *testing.T) {
 	btcAddr := "ms25MjJtha6UZcRAG2kKLUGkPrNqbXEibb"
-	service := BitnetService{Address: bitnet.BitcoinAddress(btcAddr)}
-	defer os.RemoveAll(initTempAppDir(t))
+	service := NewBitnetService(bitnet.BitcoinAddress(btcAddr))
+	// defer os.RemoveAll(initTempAppDir(t))
+	_ = os.RemoveAll
+	initTempAppDir(t)
 
 	rawTx, err := genTestRawTx(btcAddr)
 	if err != nil {
@@ -202,6 +204,7 @@ func initTempAppDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Printf("Init temp dir: %v\n", dir)
 	util.SetAppDir(dir)
 	return dir
 }
