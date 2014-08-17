@@ -17,9 +17,7 @@ func main() {
 	log.Printf("Listening on %v...\n", addr)
 
 	btcAddr := bitnet.BitcoinAddress("mrvdXP7dNodDu9YcdrFWzfXomnWNvASGnb")
-	bitnet := BitnetService{
-		Address: btcAddr,
-	}
+	bitnet := BitnetService{Address: btcAddr}
 	rpc.Register(&bitnet)
 	rpc.HandleHTTP()
 	l, err := net.Listen("tcp", addr)
