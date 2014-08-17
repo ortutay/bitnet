@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"bitbucket.org/ortutay/bitnet"
+	"bitbucket.org/ortutay/bitnet/util"
 
 	"github.com/conformal/btcchain"
 	"github.com/conformal/btcnet"
@@ -48,7 +50,8 @@ type HelloBlockFaucetReply struct {
 
 func TestBuyTokens(t *testing.T) {
 	btcAddr := "ms25MjJtha6UZcRAG2kKLUGkPrNqbXEibb"
-	_ = BitnetService{Address: bitnet.BitcoinAddress(btcAddr)}
+	service := BitnetService{Address: bitnet.BitcoinAddress(btcAddr)}
+	defer os.RemoveAll(initTempAppDir(t))
 
 	rawTx, err := genTestRawTx(btcAddr)
 	if err != nil {
@@ -72,6 +75,11 @@ func TestBuyTokens(t *testing.T) {
 	}
 
 	fmt.Printf("raw tx: %v\nkey: %v\nargs: %v\n", rawTx, key, args)
+	var reply bitnet.BuyTokensReply
+	if err := service.BuyTokens(&args, &reply); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("reply: %v\n", reply)
 }
 
 func genTestRawTx(toAddressStr string) (string, error) {
@@ -187,4 +195,13 @@ func genMasterKey() (*hdkeychain.ExtendedKey, error) {
 		return nil, err
 	}
 	return key, nil
+}
+
+func initTempAppDir(t *testing.T) string {
+	dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	util.SetAppDir(dir)
+	return dir
 }

@@ -1,7 +1,14 @@
 package bitnet
 
+// Constants
+const TokensPerSatoshi = int64(1e6)
+
 // Data structures
 type BitcoinAddress string
+
+func (ba *BitcoinAddress) String() string {
+	return string(*ba)
+}
 
 type Section struct {
 	// Expected headers:
