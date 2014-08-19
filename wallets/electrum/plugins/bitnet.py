@@ -1,6 +1,8 @@
 from electrum import BasePlugin
 from electrum.i18n import _
 
+from bitnet_client import BitnetClient
+
 import PyQt4
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
@@ -13,6 +15,7 @@ class Plugin(BasePlugin):
 
     def __init__(self, gui, name):
         self.gui = gui
+        self.client = BitnetClient()
         BasePlugin.__init__(self, gui, name)
         self._is_available = self._init()
 
@@ -32,6 +35,15 @@ class Plugin(BasePlugin):
         w = QWidget()
         self.bitnet_grid = grid = QGridLayout(w)
         grid.setSpacing(8)
-        grid.addWidget(QPushButton("Get tokens", w), 0, 0)
-        grid.addWidget(QPlainTextEdit("Hello", w), 0, 1)
+
+        b = QPushButton("Get tokens", w)
+        b.clicked.connect(lambda: self.do_get_tokens())
+        grid.addWidget(b, 0, 0)
+
+        self.dialog = dialog = QPlainTextEdit("Hello", w)
+        grid.addWidget(dialog, 0, 1)
         return w
+
+    def do_get_tokens(self):
+        resp = self.client.BuyTokens("<<rawtx>>", "<<pubkey>>")
+        self.dialog.appendPlainText("server says: " + str(resp))
