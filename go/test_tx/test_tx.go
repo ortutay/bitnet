@@ -20,17 +20,23 @@ func main() {
 	// privKeyStr := "cU3pMkjty1b7YRgp5rw2kRoBJzEYESUBrK8zac97yPV3Ev329VKb"
 	// inputAddressStr := "ms25MjJtha6UZcRAG2kKLUGkPrNqbXEibb"
 
-	txid := "9cbad128723a1a24341fb21436fa8a18cc4fad1003cd8228252ea6cc103f0eb6"
+	// txid := "9cbad128723a1a24341fb21436fa8a18cc4fad1003cd8228252ea6cc103f0eb6"
+	// addressStr := "ms25MjJtha6UZcRAG2kKLUGkPrNqbXEibb"
+	// privKeyStr := "cMnPvnwvvzyzVwUvFoCWAkGgXPhNEv783uH1yKie5eShBgVb6RDx"
+	// inputAddressStr := "mrpCfWBGDU4bV4enUrFBuw9fp6fKKmikQk"
+
+	txid := "fb3bd02016c6a6ee23397044d7eeb8cf08c1887383cd76fa2c4fa247a42b385e"
 	addressStr := "ms25MjJtha6UZcRAG2kKLUGkPrNqbXEibb"
-	privKeyStr := "cMnPvnwvvzyzVwUvFoCWAkGgXPhNEv783uH1yKie5eShBgVb6RDx"
-	inputAddressStr := "mrpCfWBGDU4bV4enUrFBuw9fp6fKKmikQk"
+	privKeyStr := "cPceLNEDBNCV7AQn7Dp8hx8ip7BCbU1WrVQzKBGvnKZKgrQVr3cn"
+	inputAddressStr := "muL3CwAe68QrZsge2AcyQ1hBPns45x1Rcu"
+	vinIdx := 1
 
 	tx := btcwire.NewMsgTx()
 	hash, err := btcwire.NewShaHashFromStr(txid)
 	if err != nil {
 		log.Fatal(err)
 	}
-	outpoint := btcwire.NewOutPoint(hash, uint32(0))
+	outpoint := btcwire.NewOutPoint(hash, uint32(vinIdx))
 	ti := btcwire.NewTxIn(outpoint, nil)
 	tx.AddTxIn(ti)
 
@@ -44,7 +50,7 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("script hex: %v\n", script)
-	to := btcwire.NewTxOut(int64(1000000), script)
+	to := btcwire.NewTxOut(int64(100000), script)
 	tx.AddTxOut(to)
 	fmt.Printf("tx: %v\n", tx)
 
