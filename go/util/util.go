@@ -2,11 +2,11 @@ package util
 
 import (
 	"fmt"
+	"github.com/peterbourgon/diskv"
 	"os"
 	"path"
 	"regexp"
 	"strings"
-	"github.com/peterbourgon/diskv"
 )
 
 var appDir string = "~/.bitnet"

@@ -1,21 +1,70 @@
 package bitnet
 
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"github.com/conformal/btcec"
+	"github.com/conformal/btcnet"
+	"github.com/conformal/btcutil"
+	"github.com/conformal/btcwire"
+)
+
 // Constants
 const TokensPerSatoshi = int64(1e6)
+const TokensForAddressWithBalance = int64(1e12)
+const BitcoinSigMagic = "Bitcoin Signed Message:\n"
 
 // Data structures
 type BitcoinAddress string
+
+func NewBitcoinAddress(str string) (*BitcoinAddress, error) {
+	// TODO(ortutay): Validate address string.
+	addr := (BitcoinAddress)(str)
+	return &addr, nil
+}
 
 func (ba *BitcoinAddress) String() string {
 	return string(*ba)
 }
 
+type SignableHasher interface {
+	SignableHash() (string, error)
+}
+
+func SignArgsBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr string) (string, error) {
+	signable, err := hasher.SignableHash()
+	if err != nil {
+		return "", fmt.Errorf("couldn't get hash: %v", err)
+	}
+
+	fullMessage := BitcoinSigMagic + signable
+	hash := btcwire.DoubleSha256([]byte(fullMessage))
+	compressed, err := isCompressed(privKey, btcAddr)
+	if err != nil {
+		return "", fmt.Errorf("couldn't check compression: %v", err)
+	}
+
+	sigBytes, err := btcec.SignCompact(btcec.S256(), privKey.ToECDSA(), hash, compressed)
+	if err != nil {
+		return "", fmt.Errorf("couldn't sign compact: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(sigBytes), nil
+}
+
 type Section struct {
 	// Expected headers:
 	// - "datetime": ISO 8601 date/time
+	// - "relayed-by": A list of tuples in the form (pubkey, sig), indicating the
+	//    sequence and identities of the servers that have relayed this message.
+	//    Sigatures are of the message hash as-received, ensuring the relay order
+	//    cannot be forged after the fact, although it is possible for servers to
+	//    omit their signature.
 	// - "sender-public-key": Public key of the sender.
 	// - "sender-sig": Signature of sender corresponding to "sender-public-key".
-	//    The server will validate the signature.
 	// - "receiver-public-key": Public key of the intended recepient. Purely
 	//    advisory.
 	Headers map[string]string
@@ -55,10 +104,28 @@ type RequestPaymentDetailsReply struct {
 
 type BuyTokensArgs struct {
 	RawTx  string // Raw bitcoin transaction that pays for the tokens.
-	PubKey string // EC pub key where the sever sends tokens.
+	PubKey string // Public key where the sever sends tokens.
 }
 
 type BuyTokensReply struct {
+}
+
+type ClaimTokensArgs struct {
+	Challenge      string // Challenge from the server.
+	BitcoinAddress string // Bitcoin address used to sign.
+	PubKey         string // Public key where the sever sends tokens.
+	Sig            string // Signature of the challenge and public key.
+}
+
+func (a *ClaimTokensArgs) SignableHash() (string, error) {
+	var buf bytes.Buffer
+	buf.WriteString(a.Challenge)
+	buf.WriteString(a.BitcoinAddress)
+	buf.WriteString(a.PubKey)
+	return sha256Hex(buf.Bytes())
+}
+
+type ClaimTokensReply struct {
 }
 
 type ChallengeArgs struct {
@@ -66,6 +133,15 @@ type ChallengeArgs struct {
 
 type ChallengeReply struct {
 	Challenge string // Challenge to be used for signature.
+}
+
+type GetBalanceArgs struct {
+	Challenge string
+	PubKey    string
+}
+
+type GetBalanceReply struct {
+	Balance int64
 }
 
 type BurnArgs struct {
@@ -103,4 +179,24 @@ type GetMessagesArgs struct {
 type GetMessagesReply struct {
 	Messages []Message
 	Sig      string
+}
+
+func sha256Hex(data []byte) (string, error) {
+	h := sha256.New()
+	_, err := h.Write(data)
+	if err != nil {
+		return "", err
+	}
+	b := h.Sum([]byte{})
+	return hex.EncodeToString(b), nil
+}
+
+func isCompressed(privKey *btcec.PrivateKey, addr string) (bool, error) {
+	btcPubKey := (btcec.PublicKey)(privKey.PublicKey)
+	serCompressed := btcPubKey.SerializeCompressed()
+	compressedAddr, err := btcutil.NewAddressPubKey(serCompressed, &btcnet.TestNet3Params)
+	if err != nil {
+		return false, err
+	}
+	return compressedAddr.EncodeAddress() == addr, nil
 }
