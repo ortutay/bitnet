@@ -78,7 +78,7 @@ func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr str
 	}
 
 	fullMessage := BitcoinSigMagic + hash
-	compressed, err := isCompressed(privKey, btcAddr)
+	compressed, err := isCompressed(privKey, btcAddr, netParams)
 	if err != nil {
 		return "", fmt.Errorf("couldn't check compression: %v", err)
 	}
@@ -236,10 +236,10 @@ func sha256Hex(data []byte) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func isCompressed(privKey *btcec.PrivateKey, addr string) (bool, error) {
+func isCompressed(privKey *btcec.PrivateKey, addr string, netParams *btcnet.Params) (bool, error) {
 	btcPubKey := (btcec.PublicKey)(privKey.PublicKey)
 	serCompressed := btcPubKey.SerializeCompressed()
-	compressedAddr, err := btcutil.NewAddressPubKey(serCompressed, &btcnet.TestNet3Params)
+	compressedAddr, err := btcutil.NewAddressPubKey(serCompressed, netParams)
 	if err != nil {
 		return false, err
 	}
