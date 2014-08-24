@@ -3,6 +3,7 @@ package bitnet
 import (
 	"encoding/hex"
 	"github.com/conformal/btcec"
+	"github.com/conformal/btcnet"
 	"github.com/conformal/btcutil"
 	"testing"
 )
@@ -17,7 +18,8 @@ func TestIsCompressed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compressed, err := isCompressed(wif.PrivKey, testnetAdddress)
+	compressed, err := isCompressed(
+		wif.PrivKey, testnetAdddress, &btcnet.TestNet3Params)
 	if err != nil {
 		t.Fatal(err)
 	}

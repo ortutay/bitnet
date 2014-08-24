@@ -70,7 +70,7 @@ func GetSig(hasher SignableHasher, privKey *btcec.PrivateKey) (string, error) {
 	return base64.StdEncoding.EncodeToString(sig.Serialize()), nil
 }
 
-func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr string) (string, error) {
+func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr string, netParams *btcnet.Params) (string, error) {
 	hash, err := hasher.SignableHash()
 	if err != nil {
 		log.Errorf("Unexpected error getting signable hash of %v: %v", hasher, err)
