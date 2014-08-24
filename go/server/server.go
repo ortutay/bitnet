@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/conformal/btcec"
 	"github.com/conformal/btcnet"
@@ -21,6 +22,8 @@ import (
 
 const sigMagic = "Bitcoin Signed Message:\n"
 
+var testnet = flag.Bool("testnet", true, "Use testnet")
+
 type BitnetService struct {
 	Bitcoin   Bitcoin
 	Address   bitnet.BitcoinAddress
@@ -29,7 +32,11 @@ type BitnetService struct {
 
 func NewBitnetServiceOnHelloBlock(address bitnet.BitcoinAddress) *BitnetService {
 	hb := new(HelloBlock)
-	hb.SetNetwork(Testnet3)
+	if *testnet {
+		hb.SetNetwork(Testnet3)
+	} else {
+		hb.SetNetwork(Mainnet)
+	}
 	bitnet := BitnetService{
 		Address:   address,
 		Datastore: bitnet.NewDatastore(),
@@ -39,12 +46,10 @@ func NewBitnetServiceOnHelloBlock(address bitnet.BitcoinAddress) *BitnetService 
 }
 
 func main() {
+	flag.Parse()
 	addr := "localhost:4000"
-	log.Info("Listening on %v...\n", addr)
+	log.Infof("Listening on %v...", addr)
 
-	hb := new(HelloBlock)
-	hb.SetNetwork(Testnet3)
-	// helloblock.SetNetwork(helloblock.Testnet)
 	btcAddr := bitnet.BitcoinAddress("mrvdXP7dNodDu9YcdrFWzfXomnWNvASGnb")
 	bitnet := NewBitnetServiceOnHelloBlock(btcAddr)
 
@@ -55,8 +60,12 @@ func main() {
 	http.ListenAndServe(addr, nil)
 }
 
-func (b *BitnetService) netParams() *btcnet.Params {
-	return &btcnet.TestNet3Params
+func netParams() *btcnet.Params {
+	if *testnet {
+		return &btcnet.TestNet3Params
+	} else {
+		return &btcnet.MainNetParams
+	}
 }
 
 func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, reply *bitnet.BuyTokensReply) error {
@@ -73,7 +82,7 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 	value := int64(0)
 	for _, out := range tx.MsgTx().TxOut {
 		scriptClass, addresses, _, err := btcscript.ExtractPkScriptAddrs(
-			out.PkScript, b.netParams())
+			out.PkScript, netParams())
 		if err != nil {
 			log.Errorf("Couldn't decode %v: %v", out.PkScript, err)
 			return errors.New("couldn't decode transaction")
@@ -138,7 +147,7 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	} else {
 		serializedBytes = btcPubKey.SerializeUncompressed()
 	}
-	btcAddr, err := btcutil.NewAddressPubKey(serializedBytes, &btcnet.TestNet3Params)
+	btcAddr, err := btcutil.NewAddressPubKey(serializedBytes, netParams())
 	if err != nil {
 		log.Errorf("Couldn't create bitcoin address for %v %v: %v", serializedBytes, args, err)
 		return errors.New("couldn't verify signature")

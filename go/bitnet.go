@@ -34,7 +34,7 @@ type SignableHasher interface {
 	SignableHash() (string, error)
 }
 
-func SignArgsBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr string) (string, error) {
+func SignArgsBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr string, netParams *btcnet.Params) (string, error) {
 	signable, err := hasher.SignableHash()
 	if err != nil {
 		return "", fmt.Errorf("couldn't get hash: %v", err)
@@ -42,7 +42,7 @@ func SignArgsBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr s
 
 	fullMessage := BitcoinSigMagic + signable
 	hash := btcwire.DoubleSha256([]byte(fullMessage))
-	compressed, err := isCompressed(privKey, btcAddr)
+	compressed, err := isCompressed(privKey, btcAddr, netParams)
 	if err != nil {
 		return "", fmt.Errorf("couldn't check compression: %v", err)
 	}
@@ -191,10 +191,10 @@ func sha256Hex(data []byte) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func isCompressed(privKey *btcec.PrivateKey, addr string) (bool, error) {
+func isCompressed(privKey *btcec.PrivateKey, addr string, netParams *btcnet.Params) (bool, error) {
 	btcPubKey := (btcec.PublicKey)(privKey.PublicKey)
 	serCompressed := btcPubKey.SerializeCompressed()
-	compressedAddr, err := btcutil.NewAddressPubKey(serCompressed, &btcnet.TestNet3Params)
+	compressedAddr, err := btcutil.NewAddressPubKey(serCompressed, netParams)
 	if err != nil {
 		return false, err
 	}

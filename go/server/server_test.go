@@ -101,7 +101,8 @@ func TestClaimTokens(t *testing.T) {
 	}
 
 	// Sign with BTC priv key, *not* tokens destination priv key
-	sig, err := bitnet.SignArgsBitcoin(&claimArgs, privKey, inputAddressStr)
+	sig, err := bitnet.SignArgsBitcoin(
+		&claimArgs, privKey, inputAddressStr, &btcnet.TestNet3Params)
 	if err != nil {
 		t.Fatal(err)
 	}
