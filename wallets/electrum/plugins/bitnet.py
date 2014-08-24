@@ -1,9 +1,10 @@
+import binascii
 import ecdsa
 from electrum import BasePlugin
 from electrum.i18n import _
 from electrum.account import *
 
-from bitnet_client import BitnetClient
+import bitnet_client
 
 import PyQt4
 from PyQt4.QtGui import *
@@ -18,8 +19,9 @@ class Plugin(BasePlugin):
     def __init__(self, gui, name):
         self.gui = gui
         # TODO(ortutay): real priv key
-        self.priv_key = ecdsa.SigningKey.from_secret_exponent(100, curve=ecdsa.curves.SECP256k1)
-        self.client = BitnetClient()
+        self.priv_key_x = ecdsa.SigningKey.from_secret_exponent(100, curve=ecdsa.curves.SECP256k1)
+        self.priv_key = bitnet_client.EC_KEY("00")
+        self.client = bitnet_client.BitnetClient()
         BasePlugin.__init__(self, gui, name)
         self._is_available = self._init()
 
@@ -48,7 +50,7 @@ class Plugin(BasePlugin):
         b.clicked.connect(lambda: self.do_claim_tokens())
         grid.addWidget(b, 1, 0)
 
-        self.dialog = dialog = QPlainTextEdit("Hello", w)
+        self.dialog = dialog = QPlainTextEdit("", w)
         grid.addWidget(dialog, 2, 1)
         return w
 
@@ -57,11 +59,9 @@ class Plugin(BasePlugin):
         self.dialog.appendPlainText("server says: " + str(resp))
 
     def do_claim_tokens(self):
-        # challenge_resp = self.client.Challenge()
-        # self.dialog.appendPlainText("server says: " + str(challenge_resp))
-        # resp = self.client.ClaimTokens("<<rawtx>>", "<<pubkey>>")
-        # self.dialog.appendPlainText("server says: " + str(resp))
-        resp = self.client.ClaimTokens(
-            "", self.key.get_public_key(), "", "claimfree")
+        pub_key_str = self.priv_key.get_public_key()
+        resp = self.client.ClaimTokens("", pub_key_str, "", "claimfree")
         self.dialog.appendPlainText("server says: " + str(resp))
+        
         resp = self.client.GetBalance(self.priv_key)
+        self.dialog.appendPlainText("server says: " + str(resp))

@@ -43,6 +43,7 @@ func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) boo
 	}
 	sig, err := btcec.ParseSignature(sigBytes, btcec.S256())
 	if err != nil {
+		log.Warningf("Couldn't parse signature %q: %v", sigStr, err)
 		return false
 	}
 

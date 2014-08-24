@@ -260,11 +260,12 @@ func (b *BitnetService) Challenge(r *http.Request, args *bitnet.ChallengeArgs, r
 }
 
 func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs, reply *bitnet.GetBalanceReply) error {
+	log.Infof("GetBalance(%v)", args)
 	pubKey, err := pubKeyFromHex(args.PubKey)
 	if err != nil {
 		return errors.New("couldn't decode public key")
 	}
-
+	
 	if !bitnet.CheckSig(args.Sig, args, pubKey) {
 		return errors.New("invalid signature")
 	}
