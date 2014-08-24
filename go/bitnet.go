@@ -33,7 +33,7 @@ func (ba *BitcoinAddress) String() string {
 }
 
 type SignableHasher interface {
-	SignableHash() (string, error)
+	SignableHash() ([]byte, error)
 }
 
 func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) bool {
@@ -53,7 +53,7 @@ func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) boo
 		return false
 	}
 
-	return sig.Verify([]byte(hash), pubKey)
+	return sig.Verify(hash, pubKey)
 }
 
 func GetSig(hasher SignableHasher, privKey *btcec.PrivateKey) (string, error) {
@@ -63,7 +63,7 @@ func GetSig(hasher SignableHasher, privKey *btcec.PrivateKey) (string, error) {
 		return "", fmt.Errorf("couldn't get hash: %v", err)
 	}
 
-	sig, err := privKey.Sign([]byte(hash))
+	sig, err := privKey.Sign(hash)
 	if err != nil {
 		return "", fmt.Errorf("couldn't sign: %v", err)
 	}
@@ -78,7 +78,7 @@ func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr str
 		return "", fmt.Errorf("couldn't get hash: %v", err)
 	}
 
-	fullMessage := BitcoinSigMagic + hash
+	fullMessage := BitcoinSigMagic + hex.EncodeToString(hash)
 	compressed, err := isCompressed(privKey, btcAddr, netParams)
 	if err != nil {
 		return "", fmt.Errorf("couldn't check compression: %v", err)
@@ -155,7 +155,7 @@ type ClaimTokensArgs struct {
 	Sig            string // Bitcoin signature of the challenge and public key.
 }
 
-func (a *ClaimTokensArgs) SignableHash() (string, error) {
+func (a *ClaimTokensArgs) SignableHash() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString(a.Challenge)
 	buf.WriteString(a.PubKey)
@@ -179,7 +179,7 @@ type GetBalanceArgs struct {
 	Sig       string // Signature of the args.
 }
 
-func (a *GetBalanceArgs) SignableHash() (string, error) {
+func (a *GetBalanceArgs) SignableHash() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString(a.Challenge)
 	buf.WriteString(a.PubKey)
@@ -227,14 +227,14 @@ type GetMessagesReply struct {
 	Sig      string
 }
 
-func sha256Hex(data []byte) (string, error) {
+func sha256Hex(data []byte) ([]byte, error) {
 	h := sha256.New()
 	_, err := h.Write(data)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	b := h.Sum([]byte{})
-	return hex.EncodeToString(b), nil
+	return b, nil
 }
 
 func isCompressed(privKey *btcec.PrivateKey, addr string, netParams *btcnet.Params) (bool, error) {

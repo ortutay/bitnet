@@ -149,14 +149,14 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 		}
 		return nil
 	}
-	
+
 	// Verify signature.
 	message, err := args.SignableHash()
 	if err != nil {
 		log.Errorf("Couldn't get message for %v: %v", args, err)
 		return errors.New("couldn't verify signature")
 	}
-	fullMessage := bitnet.BitcoinSigMagic + message
+	fullMessage := bitnet.BitcoinSigMagic + hex.EncodeToString(message)
 
 	sigBytes, err := base64.StdEncoding.DecodeString(args.Sig)
 	if err != nil {
@@ -265,7 +265,7 @@ func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs,
 	if err != nil {
 		return errors.New("couldn't decode public key")
 	}
-	
+
 	if !bitnet.CheckSig(args.Sig, args, pubKey) {
 		return errors.New("invalid signature")
 	}

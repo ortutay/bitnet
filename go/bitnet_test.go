@@ -1,9 +1,6 @@
 package bitnet
 
 import (
-	"math/big"
-	"fmt"
-	"crypto/elliptic"
 	"encoding/hex"
 	"github.com/conformal/btcec"
 	"github.com/conformal/btcnet"
