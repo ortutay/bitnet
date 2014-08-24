@@ -112,16 +112,16 @@ type BuyTokensReply struct {
 
 type ClaimTokensArgs struct {
 	Challenge      string // Challenge from the server.
-	BitcoinAddress string // Bitcoin address used to sign.
 	PubKey         string // Public key where the sever sends tokens.
-	Sig            string // Signature of the challenge and public key.
+	BitcoinAddress string // Bitcoin address used to sign.
+	Sig            string // Bitcoin signature of the challenge and public key.
 }
 
 func (a *ClaimTokensArgs) SignableHash() (string, error) {
 	var buf bytes.Buffer
 	buf.WriteString(a.Challenge)
-	buf.WriteString(a.BitcoinAddress)
 	buf.WriteString(a.PubKey)
+	buf.WriteString(a.BitcoinAddress)
 	return sha256Hex(buf.Bytes())
 }
 

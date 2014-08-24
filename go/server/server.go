@@ -23,6 +23,7 @@ import (
 const sigMagic = "Bitcoin Signed Message:\n"
 
 var testnet = flag.Bool("testnet", true, "Use testnet")
+var allowFreeTokens = flag.Bool("allow_free_tokens", true, "Allow users to get free tokens")
 
 type BitnetService struct {
 	Bitcoin   Bitcoin
@@ -50,12 +51,19 @@ func main() {
 	addr := "localhost:4000"
 	log.Infof("Listening on %v...", addr)
 
-	btcAddr := bitnet.BitcoinAddress("mrvdXP7dNodDu9YcdrFWzfXomnWNvASGnb")
+	// TODO(ortutay): Do not use static addresses.
+	var btcAddr bitnet.BitcoinAddress
+	if *testnet {
+		btcAddr = "mrvdXP7dNodDu9YcdrFWzfXomnWNvASGnb"
+	} else {
+		btcAddr = "1K4aU4iVk5JR1TNhTSxR3LgpEdBWSyb7d4"
+	}
 	bitnet := NewBitnetServiceOnHelloBlock(btcAddr)
+	log.Infof("Bitnet service %v", bitnet)
 
 	server := rpc.NewServer()
 	server.RegisterCodec(json.NewCodec(), "application/json")
-	server.RegisterService(&bitnet, "Bitnet")
+	server.RegisterService(bitnet, "Bitnet")
 	http.Handle("/bitnetRPC", server)
 	http.ListenAndServe(addr, nil)
 }
@@ -90,7 +98,6 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 		if scriptClass != btcscript.PubKeyHashTy {
 			continue
 		}
-		fmt.Printf("class: %v, addrs: %v\n", scriptClass, addresses)
 		if addresses[0].String() != b.Address.String() {
 			continue
 		}
@@ -124,6 +131,23 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArgs, reply *bitnet.ClaimTokensReply) error {
 	log.Infof("ClaimTokens(%v)", args)
 
+	tokensPubKey, err := pubKeyFromHex(args.PubKey)
+	if err != nil {
+		return errors.New("couldn't decode public key")
+	}
+	if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
+		log.Errorf("Couldn't add tokens in datastore %v", err)
+		return errors.New("Signature was accepted, but error while crediting tokens.")
+	}
+
+	if *allowFreeTokens && args.Sig == "claimfree" {
+		if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
+			log.Errorf("Couldn't add tokens in datastore %v", err)
+			return errors.New("Signature was accepted, but error while crediting tokens.")
+		}
+		return nil
+	}
+	
 	// Verify signature.
 	message, err := args.SignableHash()
 	if err != nil {
@@ -177,15 +201,7 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	}
 
 	// TODO(ortutay): Check balance on bitcoin address
-	tokensPubKey, err := pubKeyFromHex(args.PubKey)
-	if err != nil {
-		return errors.New("couldn't decode public key")
-	}
-	if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
-		log.Errorf("Couldn't add tokens in datastore %v", err)
-		return errors.New("Signature was accepted, but error while crediting tokens.")
-	}
-
+	
 	pkHashAddr, err := bitnet.NewBitcoinAddress(args.BitcoinAddress)
 	if err != nil {
 		// We have already validated the address, so we should never reach this.
