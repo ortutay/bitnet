@@ -137,10 +137,6 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	if err != nil {
 		return errors.New("couldn't decode public key")
 	}
-	if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
-		log.Errorf("Couldn't add tokens in datastore %v", err)
-		return errors.New("Signature was accepted, but error while crediting tokens.")
-	}
 
 	if *allowFreeTokens && args.Sig == "claimfree" {
 		if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
@@ -277,6 +273,23 @@ func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs,
 	}
 	reply.Balance = balance
 
+	return nil
+}
+
+func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageArgs, reply *bitnet.StoreMessageReply) error {
+	log.Infof("StoreMessage(%v)", args)
+	// pubKey, err := pubKeyFromHex(args.PubKey)
+	// if err != nil {
+	// 	return errors.New("couldn't decode public key")
+	// }
+
+	// if err := bitnet.CheckSig(args.Tokens.Sig, args.Tokens, pubKey) {
+	// 	return errors.New("invalid signature")
+	// }
+
+	// TODO(ortutay): Pick up here. Store the message, with max amount we can
+	// charge, and add a process that regularly prunes un-funded storage.
+	// if err := b.Datastore.StoreMessage()
 	return nil
 }
 

@@ -78,12 +78,9 @@ class BitnetClient:
             return {"error": challenge_resp["error"]}
         pub_key_str = priv_key.get_public_key()
         challenge = challenge_resp['result']['Challenge']
-        msg = challenge + pub_key_str
-        msg_hash = sha256(msg)
-        # msg_hash_hex = binascii.hexlify(msg_hash)
+        to_sign = sha256(challenge + pub_key_str)
         sk = ecdsa.SigningKey.from_secret_exponent(
             priv_key.secret,curve=ecdsa.curves.SECP256k1)
-        to_sign = msg_hash
         sig = sk.sign_digest(to_sign, sigencode=ecdsa.util.sigencode_der)
         sig_enc = base64.b64encode(sig)
         req = {

@@ -68,7 +68,7 @@ func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens uint64) error {
 		return err
 	}
 	dbNumTokens += numTokens
-	ser := strconv.FormatUint(numTokens, 10)
+	ser := strconv.FormatUint(dbNumTokens, 10)
 	if err := db.Write(tokensField, []byte(ser)); err != nil {
 		return fmt.Errorf("error writing to DB %v/%v/%v: %v", pubKeyStr, tokensField, ser, err)
 	}

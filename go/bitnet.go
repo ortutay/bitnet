@@ -11,6 +11,7 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	log "github.com/golang/glog"
+	"strconv"
 )
 
 // Constants
@@ -123,8 +124,16 @@ type Query struct {
 
 type TokenTransaction struct {
 	Challenge string // Challenge from the server.
+	PubKey    string // Public key storing the tokens.
 	Amount    int64  // Amount to spend. Use -1 to indicate server decides.
 	Sig       string // Signature with private key holding the tokens.
+}
+
+func (t *TokenTransaction) SignableHash() ([]byte, error) {
+	var buf bytes.Buffer
+	buf.WriteString(t.Challenge)
+	buf.WriteString(strconv.FormatInt(t.Amount, 10))
+	return doSHA256(buf.Bytes())
 }
 
 // Token management
@@ -160,7 +169,7 @@ func (a *ClaimTokensArgs) SignableHash() ([]byte, error) {
 	buf.WriteString(a.Challenge)
 	buf.WriteString(a.PubKey)
 	buf.WriteString(a.BitcoinAddress)
-	return sha256Hex(buf.Bytes())
+	return doSHA256(buf.Bytes())
 }
 
 type ClaimTokensReply struct {
@@ -183,7 +192,7 @@ func (a *GetBalanceArgs) SignableHash() ([]byte, error) {
 	var buf bytes.Buffer
 	buf.WriteString(a.Challenge)
 	buf.WriteString(a.PubKey)
-	return sha256Hex(buf.Bytes())
+	return doSHA256(buf.Bytes())
 }
 
 type GetBalanceReply struct {
@@ -227,7 +236,7 @@ type GetMessagesReply struct {
 	Sig      string
 }
 
-func sha256Hex(data []byte) ([]byte, error) {
+func doSHA256(data []byte) ([]byte, error) {
 	h := sha256.New()
 	_, err := h.Write(data)
 	if err != nil {
