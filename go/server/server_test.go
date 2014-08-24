@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -33,8 +32,7 @@ var (
 const btcAddr = "mj4urmXZ4pjiUJnhsAXbyeNooiTBizhiFS"
 
 func TestBuyTokens(t *testing.T) {
-	dir := initTempAppDir(t)
-	defer os.RemoveAll(dir)
+	defer os.RemoveAll(util.InitTempAppDir(t))
 	service := NewBitnetServiceOnHelloBlock(bitnet.BitcoinAddress(btcAddr))
 
 	rawTx, err := genTestRawTx(btcAddr)
@@ -47,6 +45,9 @@ func TestBuyTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	pubKeyHex, err := pubKeyAsHex(master)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	args := bitnet.BuyTokensArgs{
 		RawTx:  rawTx,
@@ -62,8 +63,7 @@ func TestBuyTokens(t *testing.T) {
 }
 
 func TestClaimTokens(t *testing.T) {
-	// defer os.RemoveAll(initTempAppDir(t))
-	initTempAppDir(t)
+	defer os.RemoveAll(util.InitTempAppDir(t))
 	service := NewBitnetServiceOnHelloBlock(bitnet.BitcoinAddress(btcAddr))
 
 	// 1) Get challenge string
@@ -71,16 +71,15 @@ func TestClaimTokens(t *testing.T) {
 	if err := service.Challenge(nil, &bitnet.ChallengeArgs{}, &challengeReply); err != nil {
 		t.Fatal(err)
 	}
-	fmt.Printf("challenge reply: %v\n", challengeReply)
 
 	// 2) Claim the tokens by signing with an address holding BTC
-	privKeyStr := testnetWIF
+	btcPrivKeyStr := testnetWIF
 	inputAddressStr := testnetAdddress
-	wif, err := btcutil.DecodeWIF(privKeyStr)
+	wif, err := btcutil.DecodeWIF(btcPrivKeyStr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	privKey := wif.PrivKey
+	btcPrivKey := wif.PrivKey
 
 	// Tokens destination
 	master, err := genMasterKey()
@@ -88,7 +87,6 @@ func TestClaimTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	pubKeyHex, err := pubKeyAsHex(master)
-	_ = pubKeyHex
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,12 +99,12 @@ func TestClaimTokens(t *testing.T) {
 	}
 
 	// Sign with BTC priv key, *not* tokens destination priv key
-	sig, err := bitnet.SignArgsBitcoin(
-		&claimArgs, privKey, inputAddressStr, &btcnet.TestNet3Params)
+	btcSig, err := bitnet.GetSigBitcoin(
+		&claimArgs, btcPrivKey, inputAddressStr, &btcnet.TestNet3Params)
 	if err != nil {
 		t.Fatal(err)
 	}
-	claimArgs.Sig = sig
+	claimArgs.Sig = btcSig
 
 	var claimReply bitnet.ClaimTokensReply
 
@@ -114,6 +112,35 @@ func TestClaimTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Printf("claim reply: %v\n", claimReply)
+
+	// 3) Get new challange and check balance
+	if err := service.Challenge(nil, &bitnet.ChallengeArgs{}, &challengeReply); err != nil {
+		t.Fatal(err)
+	}
+	balanceArgs := bitnet.GetBalanceArgs{
+		Challenge: challengeReply.Challenge,
+		PubKey:    pubKeyHex,
+	}
+	privKey, err := master.ECPrivKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := bitnet.GetSig(&balanceArgs, privKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	balanceArgs.Sig = sig
+	fmt.Printf("get balance args: %v\n", balanceArgs)
+	var balanceReply bitnet.GetBalanceReply
+	if err := service.GetBalance(nil, &balanceArgs, &balanceReply); err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("balance reply: %v\n", balanceReply)
+
+	if balanceReply.Balance != bitnet.TokensForAddressWithBalance {
+		t.Errorf("Did not get expected balance\nwant: %v\ngot:  %v\n",
+			bitnet.TokensForAddressWithBalance, balanceReply.Balance)
+	}
 }
 
 func genTestRawTx(toAddressStr string) (string, error) {
@@ -218,16 +245,6 @@ func genMasterKey() (*hdkeychain.ExtendedKey, error) {
 	}
 	key.SetNet(&btcnet.TestNet3Params)
 	return key, nil
-}
-
-func initTempAppDir(t *testing.T) string {
-	dir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Printf("Init temp dir: %v\n", dir)
-	util.SetAppDir(dir)
-	return dir
 }
 
 func pubKeyAsHex(key *hdkeychain.ExtendedKey) (string, error) {

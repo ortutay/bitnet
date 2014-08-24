@@ -26,9 +26,10 @@ var testnet = flag.Bool("testnet", true, "Use testnet")
 var allowFreeTokens = flag.Bool("allow_free_tokens", true, "Allow users to get free tokens")
 
 type BitnetService struct {
-	Bitcoin   Bitcoin
-	Address   bitnet.BitcoinAddress
-	Datastore *bitnet.Datastore
+	Bitcoin         Bitcoin
+	Address         bitnet.BitcoinAddress
+	Datastore       *bitnet.Datastore
+	ActiveNetParams *btcnet.Params
 }
 
 func NewBitnetServiceOnHelloBlock(address bitnet.BitcoinAddress) *BitnetService {
@@ -39,9 +40,10 @@ func NewBitnetServiceOnHelloBlock(address bitnet.BitcoinAddress) *BitnetService 
 		hb.SetNetwork(Mainnet)
 	}
 	bitnet := BitnetService{
-		Address:   address,
-		Datastore: bitnet.NewDatastore(),
-		Bitcoin:   hb,
+		Address:         address,
+		Datastore:       bitnet.NewDatastore(),
+		Bitcoin:         hb,
+		ActiveNetParams: &btcnet.TestNet3Params,
 	}
 	return &bitnet
 }
@@ -87,7 +89,7 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 		return fmt.Errorf("couldn't decode tx: %v", err)
 	}
 	log.Infof("got tx: %v\n", tx)
-	value := int64(0)
+	value := uint64(0)
 	for _, out := range tx.MsgTx().TxOut {
 		scriptClass, addresses, _, err := btcscript.ExtractPkScriptAddrs(
 			out.PkScript, netParams())
@@ -101,7 +103,7 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 		if addresses[0].String() != b.Address.String() {
 			continue
 		}
-		value += out.Value
+		value += uint64(out.Value)
 	}
 	numTokens := value * bitnet.TokensPerSatoshi
 	log.Infof("Tx value to us: %v -> %v tokens\n", value, numTokens)
@@ -171,12 +173,12 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	} else {
 		serializedBytes = btcPubKey.SerializeUncompressed()
 	}
-	btcAddr, err := btcutil.NewAddressPubKey(serializedBytes, netParams())
+	btcAddrPK, err := btcutil.NewAddressPubKey(serializedBytes, netParams())
 	if err != nil {
 		log.Errorf("Couldn't create bitcoin address for %v %v: %v", serializedBytes, args, err)
 		return errors.New("couldn't verify signature")
 	}
-	if btcAddr.EncodeAddress() != args.BitcoinAddress {
+	if btcAddrPK.EncodeAddress() != args.BitcoinAddress {
 		return errors.New("invalid signature")
 	}
 
@@ -201,7 +203,22 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	}
 
 	// TODO(ortutay): Check balance on bitcoin address
-	
+	btcAddr, err := btcutil.DecodeAddress(args.BitcoinAddress, b.ActiveNetParams)
+	if err != nil {
+		log.Errorf("Unexpected error decoding address %q: %v",
+			args.BitcoinAddress, err)
+		return errors.New("couldn't decode bitcoin address")
+	}
+	received, err := b.Bitcoin.GetTotalReceived(btcAddr, bitnet.MinConfForClaimTokens)
+	if err != nil {
+		log.Errorf("Error while getting bitcoin balance for %v: %v", btcAddr, err)
+		return errors.New("server error")
+	}
+	log.Infof("received for %v: %v", btcAddr.EncodeAddress(), received)
+	if received == 0 {
+		return errors.New("must sign with address that holds non-zero balance")
+	}
+
 	pkHashAddr, err := bitnet.NewBitcoinAddress(args.BitcoinAddress)
 	if err != nil {
 		// We have already validated the address, so we should never reach this.
@@ -239,6 +256,26 @@ func (b *BitnetService) Challenge(r *http.Request, args *bitnet.ChallengeArgs, r
 		return errors.New("couldn't generate challenge")
 	}
 	reply.Challenge = challenge
+	return nil
+}
+
+func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs, reply *bitnet.GetBalanceReply) error {
+	pubKey, err := pubKeyFromHex(args.PubKey)
+	if err != nil {
+		return errors.New("couldn't decode public key")
+	}
+
+	if !bitnet.CheckSig(args.Sig, args, pubKey) {
+		return errors.New("invalid signature")
+	}
+
+	balance, err := b.Datastore.GetNumTokens(pubKey)
+	if err != nil {
+		log.Errorf("Couldn't get number of tokens for %v: %v", pubKey, err)
+		return errors.New("server error")
+	}
+	reply.Balance = balance
+
 	return nil
 }
 

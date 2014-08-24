@@ -7,7 +7,6 @@ import (
 	"github.com/conformal/btcec"
 	log "github.com/golang/glog"
 	"github.com/peterbourgon/diskv"
-	"math/big"
 	"strconv"
 	"sync"
 	"time"
@@ -58,29 +57,45 @@ func (d *Datastore) getDBForRelativePath(relPath string) (*diskv.Diskv, *sync.Mu
 	return db, lock
 }
 
-func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens int64) error {
+func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens uint64) error {
 	fmt.Printf("AddTokens(%v, %v)\n", pubKey, numTokens)
 	pubKeyStr := stringForPubKey(pubKey)
 	db, lock := d.getDBForPubKey(pubKey)
 	lock.Lock()
 	defer lock.Unlock()
+	dbNumTokens, err := d.getNumTokensFromDB(db, pubKey)
+	if err != nil {
+		return err
+	}
+	dbNumTokens += numTokens
+	ser := strconv.FormatUint(numTokens, 10)
+	if err := db.Write(tokensField, []byte(ser)); err != nil {
+		return fmt.Errorf("error writing to DB %v/%v/%v: %v", pubKeyStr, tokensField, ser, err)
+	}
+	return nil
+}
+
+func (d *Datastore) GetNumTokens(pubKey *btcec.PublicKey) (uint64, error) {
+	db, lock := d.getDBForPubKey(pubKey)
+	lock.Lock()
+	defer lock.Unlock()
+	return d.getNumTokensFromDB(db, pubKey)
+}
+
+func (d *Datastore) getNumTokensFromDB(db *diskv.Diskv, pubKey *btcec.PublicKey) (uint64, error) {
 	dbValue := []byte("0")
 	if db.Has(tokensField) {
 		var err error
 		dbValue, err = db.Read(tokensField)
 		if err != nil {
-			return fmt.Errorf("error reading from DB %v/%v: %v", tokensField, err)
+			return 0, fmt.Errorf("error reading from DB %v/%v: %v", tokensField, err)
 		}
 	}
-	dbNumTokens := new(big.Int)
-	if _, ok := dbNumTokens.SetString(string(dbValue), 10); !ok {
-		return fmt.Errorf("error parsing %v/%v/%v", pubKeyStr, tokensField, dbValue)
+	dbNumTokens, err := strconv.ParseUint(string(dbValue), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("error parsing %v/%v/%v", pubKey, tokensField, dbValue)
 	}
-	dbNumTokens.Add(dbNumTokens, big.NewInt(numTokens))
-	if err := db.Write(tokensField, []byte(dbNumTokens.String())); err != nil {
-		return fmt.Errorf("error writing to DB %v/%v/%v: %v", pubKeyStr, tokensField, dbNumTokens.String(), err)
-	}
-	return nil
+	return dbNumTokens, nil
 }
 
 func (d *Datastore) StoreChallenge(challengeStr string) error {

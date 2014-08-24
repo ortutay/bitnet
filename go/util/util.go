@@ -3,10 +3,12 @@ package util
 import (
 	"fmt"
 	"github.com/peterbourgon/diskv"
+	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+	"testing"
 )
 
 var appDir string = "~/.bitnet"
@@ -94,4 +96,14 @@ func GetOrCreateDB(path string) *diskv.Diskv {
 		CacheSizeMax: 1024 * 1024,
 	})
 	return d
+}
+
+func InitTempAppDir(t *testing.T) string {
+	dir, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("Init temp dir: %v\n", dir)
+	SetAppDir(dir)
+	return dir
 }
