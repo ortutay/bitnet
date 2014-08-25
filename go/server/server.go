@@ -198,7 +198,6 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 		return errors.New("challenge expired, retry with new challenge")
 	}
 
-	// TODO(ortutay): Check balance on bitcoin address
 	btcAddr, err := btcutil.DecodeAddress(args.BitcoinAddress, b.ActiveNetParams)
 	if err != nil {
 		log.Errorf("Unexpected error decoding address %q: %v",
@@ -213,6 +212,11 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	log.Infof("received for %v: %v", btcAddr.EncodeAddress(), received)
 	if received == 0 {
 		return errors.New("must sign with address that holds non-zero balance")
+	}
+
+	if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
+		log.Errorf("Couldn't add tokens in datastore %v", err)
+		return errors.New("Signature was accepted, but error while crediting tokens.")
 	}
 
 	pkHashAddr, err := bitnet.NewBitcoinAddress(args.BitcoinAddress)
