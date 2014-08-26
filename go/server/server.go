@@ -2,6 +2,7 @@ package main
 
 import (
 	"bitbucket.org/ortutay/bitnet"
+	"bitbucket.org/ortutay/bitnet/util"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -114,7 +115,7 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 	}
 	log.Infof("Successfully submitted transaction, ID: %v\n", txHash)
 
-	pubKey, err := pubKeyFromHex(args.PubKey)
+	pubKey, err := util.PubKeyFromHex(args.PubKey)
 	if err != nil {
 		return errors.New("couldn't decode public key")
 	}
@@ -133,7 +134,7 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArgs, reply *bitnet.ClaimTokensReply) error {
 	log.Infof("ClaimTokens(%v)", args)
 
-	tokensPubKey, err := pubKeyFromHex(args.PubKey)
+	tokensPubKey, err := util.PubKeyFromHex(args.PubKey)
 	if err != nil {
 		return errors.New("couldn't decode public key")
 	}
@@ -266,7 +267,7 @@ func (b *BitnetService) Challenge(r *http.Request, args *bitnet.ChallengeArgs, r
 
 func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs, reply *bitnet.GetBalanceReply) error {
 	log.Infof("GetBalance(%v)", args)
-	pubKey, err := pubKeyFromHex(args.PubKey)
+	pubKey, err := util.PubKeyFromHex(args.PubKey)
 	if err != nil {
 		return errors.New("couldn't decode public key")
 	}
@@ -285,32 +286,38 @@ func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs,
 	return nil
 }
 
+func (b *BitnetService) checkTokens(pubKey *btcec.PublicKey, tokens *bitnet.TokenTransaction) (int64, error) {
+	if !bitnet.CheckSig(tokens.Sig, tokens, pubKey) {
+		return 0, errors.New("invalid signature on tokens")
+	}
+	numTokens, err := b.Datastore.GetNumTokens(pubKey)
+	if err != nil {
+		log.Errorf("Error on GetNumTokens(%v): %v", pubKey, err)
+		return 0, errors.New("server error")
+	}
+	amount := tokens.Amount
+	if amount == -1 {
+		amount = bitnet.DefaultBurnAmount
+	} else if amount < -1 {
+		return 0, errors.New("invalid burn amount")
+	}
+	if numTokens < uint64(amount) {
+		return 0, errors.New("insufficient balance")
+	}
+	return amount, nil
+}
+
 func (b *BitnetService) Burn(r *http.Request, args *bitnet.BurnArgs, reply *bitnet.BurnReply) error {
 	log.Infof("Burn(%v)", args)
-	pubKey, err := pubKeyFromHex(args.Tokens.PubKey)
+	pubKey, err := util.PubKeyFromHex(args.Tokens.PubKey)
 	if err != nil {
 		return errors.New("couldn't decode public key")
 	}
 
-	if !bitnet.CheckSig(args.Tokens.Sig, &args.Tokens, pubKey) {
-		return errors.New("invalid signature on tokens")
-	}
-
-	numTokens, err := b.Datastore.GetNumTokens(pubKey)
+	amount, err := b.checkTokens(pubKey, &args.Tokens)
 	if err != nil {
-		log.Errorf("Error on GetNumTokens(%v): %v", pubKey, err)
-		return errors.New("server error")
+		return err
 	}
-	amount := args.Tokens.Amount
-	if amount == -1 {
-		amount = bitnet.DefaultBurnAmount
-	} else if amount < -1 {
-		return errors.New("invalid burn amount")
-	}
-	if numTokens < uint64(amount) {
-		return errors.New("insufficient balance")
-	}
-
 	if err := b.Datastore.AddTokens(pubKey, -amount); err != nil {
 		log.Errorf("Error on AddTokens(%v): %v", err)
 	}
@@ -320,29 +327,29 @@ func (b *BitnetService) Burn(r *http.Request, args *bitnet.BurnArgs, reply *bitn
 
 func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageArgs, reply *bitnet.StoreMessageReply) error {
 	log.Infof("StoreMessage(%v)", args)
-	// pubKey, err := pubKeyFromHex(args.PubKey)
-	// if err != nil {
-	// 	return errors.New("couldn't decode public key")
-	// }
 
-	// if err := bitnet.CheckSig(args.Tokens.Sig, args.Tokens, pubKey) {
-	// 	return errors.New("invalid signature")
-	// }
+	pubKey, err := util.PubKeyFromHex(args.Tokens.PubKey)
+	if err != nil {
+		return errors.New("couldn't decode public key")
+	}
 
-	// TODO(ortutay): Pick up here. Store the message, with max amount we can
-	// charge, and add a process that regularly prunes un-funded storage.
-	// if err := b.Datastore.StoreMessage()
+	amount, err := b.checkTokens(pubKey, &args.Tokens)
+	if err != nil {
+		return err
+	}
+	
+	if err := args.Message.Validate(); err != nil {
+		return err
+	}
+
+	if err := b.Datastore.StoreMessage(&args.Message); err != nil {
+		log.Errorf("Error on StoreMessage(%v): %v", args.Message, err)
+		return errors.New("server error")
+	}
+
+	if err := b.Datastore.AddTokens(pubKey, -amount); err != nil {
+		log.Errorf("Error on AddTokens(%v): %v", err)
+	}
+	
 	return nil
-}
-
-func pubKeyFromHex(pubKeyHex string) (*btcec.PublicKey, error) {
-	pubKeyData, err := hex.DecodeString(pubKeyHex)
-	if err != nil {
-		return nil, err
-	}
-	pubKey, err := btcec.ParsePubKey(pubKeyData, btcec.S256())
-	if err != nil {
-		return nil, err
-	}
-	return pubKey, nil
 }

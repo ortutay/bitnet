@@ -128,7 +128,7 @@ func TestClaimTokens(t *testing.T) {
 func TestBurn(t *testing.T) {
 	defer os.RemoveAll(util.InitTempAppDir(t))
 
-	// Tokens destination
+	service := NewBitnetServiceOnHelloBlock(bitnet.BitcoinAddress(btcAddr))
 	master, err := genMasterKey()
 	if err != nil {
 		t.Fatal(err)
@@ -142,18 +142,18 @@ func TestBurn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := NewBitnetServiceOnHelloBlock(bitnet.BitcoinAddress(btcAddr))
+	// Grant tokens
 	if err := service.Datastore.AddTokens(pubKey, 1000); err != nil {
 		t.Fatal(err)
 	}
 
-	// 1) Get challenge string
+	// Get challenge string
 	var challengeReply bitnet.ChallengeReply
 	if err := service.Challenge(nil, &bitnet.ChallengeArgs{}, &challengeReply); err != nil {
 		t.Fatal(err)
 	}
 
-	// 2) Burn tokens
+	// Burn tokens
 	burnArgs := bitnet.BurnArgs{
 		Tokens: bitnet.TokenTransaction{
 			Challenge: challengeReply.Challenge,
@@ -184,6 +184,71 @@ func TestBurn(t *testing.T) {
 	if balanceReply.Balance != 900 {
 		t.Errorf("Did not get expected balance\nwant: %v\ngot:  %v\n",
 			900, balanceReply.Balance)
+	}
+}
+
+func TestStoreMessage(t *testing.T) {
+	defer os.RemoveAll(util.InitTempAppDir(t))
+
+	service := NewBitnetServiceOnHelloBlock(bitnet.BitcoinAddress(btcAddr))
+	master, err := genMasterKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	privKey, err := master.ECPrivKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubKey, err := master.ECPubKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubKeyHex, err := pubKeyAsHex(master)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grant tokens
+	if err := service.Datastore.AddTokens(pubKey, 100000); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get challenge string
+	var challengeReply bitnet.ChallengeReply
+	if err := service.Challenge(nil, &bitnet.ChallengeArgs{}, &challengeReply); err != nil {
+		t.Fatal(err)
+	}
+
+	// Store the message
+	msg := bitnet.Message{
+		Plaintext: bitnet.Section{Body: "some message content"},
+		Encrypted: "aDkje840klD/ad",
+	}
+	msg.Plaintext.AddHeader("datetime", "1985-04-12T23:20:50.52Z")
+	msg.Plaintext.AddHeader("sender-pubkey", pubKeyHex)
+	msg.Plaintext.AddHeader("type", "coinjoin")
+	msg.Plaintext.AddHeader("-coinjoin-header", "additional data")
+	sig, err := bitnet.GetSig(&msg, privKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg.Plaintext.AddHeader("sender-sig", sig)
+	storeArgs := bitnet.StoreMessageArgs{
+		Tokens: bitnet.TokenTransaction{
+			Challenge: challengeReply.Challenge,
+			Amount:    100,
+			PubKey:    pubKeyHex,
+		},
+		Message: msg,
+	}
+	tokensSig, err := bitnet.GetSig(&storeArgs.Tokens, privKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeArgs.Tokens.Sig = tokensSig
+	
+	if err := service.StoreMessage(nil, &storeArgs, &bitnet.StoreMessageReply{}); err != nil {
+		t.Fatal(err)
 	}
 }
 

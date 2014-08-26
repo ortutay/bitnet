@@ -12,7 +12,7 @@ func TestTokens(t *testing.T) {
 	d := NewDatastore()
 	_, pubKey := btcec.PrivKeyFromBytes(btcec.S256(), []byte("entropy"))
 	want := uint64(100)
-	if err := d.AddTokens(pubKey, want); err != nil {
+	if err := d.AddTokens(pubKey, int64(want)); err != nil {
 		t.Fatal(err)
 	}
 	num, err := d.GetNumTokens(pubKey)

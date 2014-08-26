@@ -3,11 +3,13 @@ package bitnet
 import (
 	"bitbucket.org/ortutay/bitnet/util"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/conformal/btcec"
 	log "github.com/golang/glog"
 	"github.com/peterbourgon/diskv"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -21,6 +23,7 @@ const (
 
 	challengeDBRelativePath     = "challenges.db"
 	usedAddressesDBRelativePath = "usedAddresses.db"
+	messagesDBRelativePath = "messages.db"
 
 	challengeExpiresSeconds = 3600 * 24 // 24 hours
 )
@@ -71,11 +74,18 @@ func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens int64) error {
 	if uint64(numTokens) < 0 && uint64(-numTokens) > dbNumTokens {
 		return errors.New("insufficient balance")
 	}
+	oldDBNumTokens := dbNumTokens
 	if numTokens >= 0 {
 		dbNumTokens += uint64(numTokens)
 	} else {
 		dbNumTokens -= uint64(-numTokens)
 	}
+
+	// Handle potential wrap-around from overlow.
+	if numTokens > 0 && dbNumTokens < oldDBNumTokens {
+		dbNumTokens = math.MaxUint64
+	}
+
 	ser := strconv.FormatUint(dbNumTokens, 10)
 	if err := db.Write(tokensField, []byte(ser)); err != nil {
 		return fmt.Errorf("error writing to DB %v/%v/%v: %v", pubKeyStr, tokensField, ser, err)
@@ -156,7 +166,6 @@ func (d *Datastore) DeleteChallenge(challengeStr string) error {
 	defer lock.Unlock()
 
 	if err := db.Erase(challengeStr); err != nil {
-		log.Errorf("Error erasing challenge %q: %v", challengeStr, err)
 		return err
 	}
 
@@ -183,4 +192,28 @@ func (d *Datastore) HasUsedAddress(btcAddress *BitcoinAddress) bool {
 	lock.Lock()
 	defer lock.Unlock()
 	return db.Has(btcAddress.String())
+}
+
+func (d *Datastore) StoreMessage(message *Message) error {
+	db, lock := d.getDBForRelativePath(messagesDBRelativePath)
+	lock.Lock()
+	defer lock.Unlock()
+
+	hash, err := message.SignableHash()
+	if err != nil {
+		return fmt.Errorf("couldn't get hash: %v", err)
+	}
+	hashHex := hex.EncodeToString(hash)
+	if db.Has(hashHex) {
+		return nil
+	}
+	// Use JSON for easy inspection.
+	messageJson, err := json.Marshal(message)
+	if err != nil {
+		return fmt.Errorf("couldn't marshal %v to JSON: %v", message, err)
+	}
+	if err := db.Write(hashHex, []byte(messageJson)); err != nil {
+		return err
+	}
+	return nil
 }

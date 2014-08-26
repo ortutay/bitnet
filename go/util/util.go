@@ -1,7 +1,9 @@
 package util
 
 import (
+	"encoding/hex"
 	"fmt"
+	"github.com/conformal/btcec"
 	"github.com/peterbourgon/diskv"
 	"io/ioutil"
 	"os"
@@ -106,4 +108,16 @@ func InitTempAppDir(t *testing.T) string {
 	fmt.Printf("Init temp dir: %v\n", dir)
 	SetAppDir(dir)
 	return dir
+}
+
+func PubKeyFromHex(pubKeyHex string) (*btcec.PublicKey, error) {
+	pubKeyData, err := hex.DecodeString(pubKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	pubKey, err := btcec.ParsePubKey(pubKeyData, btcec.S256())
+	if err != nil {
+		return nil, err
+	}
+	return pubKey, nil
 }
