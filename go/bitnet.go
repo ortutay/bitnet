@@ -97,6 +97,10 @@ func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr str
 type Section struct {
 	// Expected headers:
 	// - "datetime": ISO 8601 date/time
+	// - "type": If set, indicates that this message conforms to a standard
+	//    message type. Examples include a payment request, a partially signed
+	//    multisig transaction, or a coinjoin transaction. The server may perform
+	//    additional validation on known types.
 	// - "relayed-by": A list of tuples in the form (pubkey, sig), indicating the
 	//    sequence and identities of the servers that have relayed this message.
 	//    Sigatures are of the message hash as-received, ensuring the relay order
@@ -104,8 +108,8 @@ type Section struct {
 	//    omit their signature.
 	// - "sender-public-key": Public key of the sender.
 	// - "sender-sig": Signature of sender corresponding to "sender-public-key".
-	// - "receiver-public-key": Public key of the intended recepient. Purely
-	//    advisory.
+	// - "receiver-public-key": Public key of the intended recepient. If there is
+	//    an encrypted section, the corresponding private key can decrypt it.
 	Headers map[string]string
 	Body    string
 }
@@ -113,6 +117,14 @@ type Section struct {
 type Message struct {
 	Plaintext Section
 	Encrypted string
+}
+
+func (m *Message) SignableHash() ([]byte, error) {
+	return nil, nil
+}
+
+func (m *Message) IsValid() (bool, error) {
+	return false, nil
 }
 
 type Query struct {

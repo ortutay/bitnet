@@ -211,20 +211,25 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	}
 	log.Infof("received for %v: %v", btcAddr.EncodeAddress(), received)
 	if received == 0 {
-		return errors.New("must sign with address that holds non-zero balance")
+		return errors.New("signing address has never received bitcoin")
 	}
 
-	if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
-		log.Errorf("Couldn't add tokens in datastore %v", err)
-		return errors.New("Signature was accepted, but error while crediting tokens.")
-	}
-
+	// TODO(ortutay): Check that address has not been used.
 	pkHashAddr, err := bitnet.NewBitcoinAddress(args.BitcoinAddress)
 	if err != nil {
 		// We have already validated the address, so we should never reach this.
 		log.Errorf("Invalid address reach unexpectedly for %q", args.BitcoinAddress)
 		return errors.New("invalid bitcoin address")
 	}
+	if b.Datastore.HasUsedAddress(pkHashAddr) {
+	}
+
+
+	if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
+		log.Errorf("Couldn't add tokens in datastore %v", err)
+		return errors.New("Signature was accepted, but error while crediting tokens.")
+	}
+
 	if err := b.Datastore.StoreUsedAddress(pkHashAddr); err != nil {
 		log.Errorf("Error while noting address use: %v", err)
 		// Do not return error, since we have credited the tokens.
