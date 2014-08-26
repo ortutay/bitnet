@@ -1,25 +1,38 @@
 package bitnet
 
 import (
+	"bitbucket.org/ortutay/bitnet/util"
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/conformal/btcec"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	log "github.com/golang/glog"
+	"sort"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // Constants
-const TokensPerSatoshi = uint64(1e3)
-const TokensForAddressWithBalance = uint64(1e6)
+const TokensPerSatoshi = uint64(1e6)
+const TokensForAddressWithBalance = uint64(1e9)
 const BitcoinSigMagic = "Bitcoin Signed Message:\n"
 const MinConfForClaimTokens = 0
 const DefaultBurnAmount = 10
+
+const assumedBitcoinPrice = uint64(500) // Use approximate rate of $500/BTC
+const satoshisPerBitcoin = uint64(1e8)
+const storeMessageUSDPrice = float64(.00000001) // 1 penny stores 1M messages
+const StoreMessageTokenPrice = uint64(storeMessageUSDPrice *
+	1 / float64(assumedBitcoinPrice) *
+	float64(satoshisPerBitcoin) *
+	float64(TokensPerSatoshi))
 
 // Data structures
 type BitcoinAddress string
@@ -98,7 +111,7 @@ func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr str
 
 type Section struct {
 	// Expected headers:
-	// - "datetime": ISO 8601 date/time
+	// - "datetime": RFC 3339 date/time
 	// - "type": If set, indicates that this message conforms to a standard
 	//    message type. Examples include a payment request, a partially signed
 	//    multisig transaction, or a coinjoin transaction. The server may perform
@@ -108,12 +121,26 @@ type Section struct {
 	//    Sigatures are of the message hash as-received, ensuring the relay order
 	//    cannot be forged after the fact, although it is possible for servers to
 	//    omit their signature.
-	// - "sender-public-key": Public key of the sender.
+	// - "sender-pubkey": Public key of the sender.
 	// - "sender-sig": Signature of sender corresponding to "sender-public-key".
-	// - "receiver-public-key": Public key of the intended recepient. If there is
+	// - "receiver-pubkey": Public key of the intended recepient. If there is
 	//    an encrypted section, the corresponding private key can decrypt it.
-	Headers map[string]string
+	// - "expires-datetime": Tells the server to delete the message after a
+	//    given date/time.
+	// - "expires-pubkey": Tells the server to delete the message after a given
+	//    public key(s) has gotten it.
+	Headers map[string][]string
 	Body    string
+}
+
+func (s *Section) AddHeader(field string, value string) {
+	if s.Headers == nil {
+		s.Headers = make(map[string][]string)
+	}
+	if _, ok := s.Headers[field]; !ok {
+		s.Headers[field] = make([]string, 0)
+	}
+	s.Headers[field] = append(s.Headers[field], value)
 }
 
 type Message struct {
@@ -122,11 +149,90 @@ type Message struct {
 }
 
 func (m *Message) SignableHash() ([]byte, error) {
-	return nil, nil
+	h := sha256.New()
+
+	var headerFields []string
+	for field, _ := range m.Plaintext.Headers {
+		if field == "sender-sig" {
+			continue
+		}
+		headerFields = append(headerFields, field)
+	}
+	sort.Strings(headerFields)
+	for _, field := range headerFields {
+		h.Write([]byte(field))
+		h.Write([]byte(strings.Join(m.Plaintext.Headers[field], "")))
+	}
+
+	h.Write([]byte(m.Plaintext.Body))
+	h.Write([]byte(m.Encrypted))
+
+	return h.Sum([]byte{}), nil
 }
 
-func (m *Message) IsValid() (bool, error) {
-	return false, nil
+func validateDatetime(datetimes []string) error {
+	for _, datetime := range datetimes {
+		if _, err := time.Parse(time.RFC3339, datetime); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validatePubKey(pubKeys []string) error {
+	fmt.Printf("validate pubkey %v\n", pubKeys)
+	for _, pubKeyHex := range pubKeys {
+		if _, err := util.PubKeyFromHex(pubKeyHex); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Message) Validate() error {
+	fmt.Printf("validate %v\n", m)
+
+	// Validate plaintext headers
+	for field, value := range m.Plaintext.Headers {
+		switch field {
+		case "datetime", "expires-datetime":
+			if err := validateDatetime(value); err != nil {
+				return fmt.Errorf("invalid %s: %v", field, err)
+			}
+		case "sender-pubkey", "receiver-pubkey", "expires-pubkey":
+			if err := validatePubKey(value); err != nil {
+				return fmt.Errorf("invalid %s", field)
+			}
+		}
+	}
+
+	// Public keys fields have been validated, check signatures
+	for field, _ := range m.Plaintext.Headers {
+		switch field {
+		case "sender-sig":
+			senderPubKeys, ok := m.Plaintext.Headers["sender-pubkey"]
+			if !ok {
+				return errors.New("got sender-sig, but missing sender-pubkey")
+			}
+			senderSigs := m.Plaintext.Headers["sender-sig"]
+			if len(senderPubKeys) != len(senderSigs) {
+				return fmt.Errorf(
+					"mismatched sender-pubkey and sender-sig lengths: %d = %d",
+					len(senderPubKeys), len(senderSigs))
+			}
+			for i, pubKeyHex := range senderPubKeys {
+				pubKey, err := util.PubKeyFromHex(pubKeyHex)
+				if err != nil {
+					return errors.New("unexpected invalid pubkey")
+				}
+				if !CheckSig(senderSigs[i], m, pubKey) {
+					return fmt.Errorf("invalid sig/pubkey: %q %q", senderSigs[i], pubKeyHex)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 type Query struct {
