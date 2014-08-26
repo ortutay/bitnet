@@ -3,6 +3,7 @@ package bitnet
 import (
 	"bitbucket.org/ortutay/bitnet/util"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/conformal/btcec"
 	log "github.com/golang/glog"
@@ -57,7 +58,7 @@ func (d *Datastore) getDBForRelativePath(relPath string) (*diskv.Diskv, *sync.Mu
 	return db, lock
 }
 
-func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens uint64) error {
+func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens int64) error {
 	fmt.Printf("AddTokens(%v, %v)\n", pubKey, numTokens)
 	pubKeyStr := stringForPubKey(pubKey)
 	db, lock := d.getDBForPubKey(pubKey)
@@ -67,7 +68,14 @@ func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens uint64) error {
 	if err != nil {
 		return err
 	}
-	dbNumTokens += numTokens
+	if uint64(numTokens) < 0 && uint64(-numTokens) > dbNumTokens {
+		return errors.New("insufficient balance")
+	}
+	if numTokens >= 0 {
+		dbNumTokens += uint64(numTokens)
+	} else {
+		dbNumTokens -= uint64(-numTokens)
+	}
 	ser := strconv.FormatUint(dbNumTokens, 10)
 	if err := db.Write(tokensField, []byte(ser)); err != nil {
 		return fmt.Errorf("error writing to DB %v/%v/%v: %v", pubKeyStr, tokensField, ser, err)
@@ -168,4 +176,11 @@ func (d *Datastore) StoreUsedAddress(btcAddress *BitcoinAddress) error {
 	}
 
 	return nil
+}
+
+func (d *Datastore) HasUsedAddress(btcAddress *BitcoinAddress) bool {
+	db, lock := d.getDBForRelativePath(usedAddressesDBRelativePath)
+	lock.Lock()
+	defer lock.Unlock()
+	return db.Has(btcAddress.String())
 }

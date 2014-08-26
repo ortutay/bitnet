@@ -122,7 +122,7 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 	// TODO(ortutay): Getting an error here is bad, because we have already
 	// submitted the client's transaction. We should have more handling around
 	// this case.
-	if err := b.Datastore.AddTokens(pubKey, numTokens); err != nil {
+	if err := b.Datastore.AddTokens(pubKey, int64(numTokens)); err != nil {
 		log.Errorf("Couldn't add tokens in datastore %v", err)
 		return errors.New("Transaction was accepted, but error while crediting tokens. Please report.")
 	}
@@ -139,7 +139,7 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	}
 
 	if *allowFreeTokens && args.Sig == "claimfree" {
-		if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
+		if err := b.Datastore.AddTokens(tokensPubKey, int64(bitnet.TokensForAddressWithBalance)); err != nil {
 			log.Errorf("Couldn't add tokens in datastore %v", err)
 			return errors.New("Signature was accepted, but error while crediting tokens.")
 		}
@@ -222,10 +222,10 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 		return errors.New("invalid bitcoin address")
 	}
 	if b.Datastore.HasUsedAddress(pkHashAddr) {
+		return errors.New("already credited tokens for this address")
 	}
 
-
-	if err := b.Datastore.AddTokens(tokensPubKey, bitnet.TokensForAddressWithBalance); err != nil {
+	if err := b.Datastore.AddTokens(tokensPubKey, int64(bitnet.TokensForAddressWithBalance)); err != nil {
 		log.Errorf("Couldn't add tokens in datastore %v", err)
 		return errors.New("Signature was accepted, but error while crediting tokens.")
 	}
@@ -281,6 +281,39 @@ func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs,
 		return errors.New("server error")
 	}
 	reply.Balance = balance
+
+	return nil
+}
+
+func (b *BitnetService) Burn(r *http.Request, args *bitnet.BurnArgs, reply *bitnet.BurnReply) error {
+	log.Infof("Burn(%v)", args)
+	pubKey, err := pubKeyFromHex(args.Tokens.PubKey)
+	if err != nil {
+		return errors.New("couldn't decode public key")
+	}
+
+	if !bitnet.CheckSig(args.Tokens.Sig, &args.Tokens, pubKey) {
+		return errors.New("invalid signature on tokens")
+	}
+
+	numTokens, err := b.Datastore.GetNumTokens(pubKey)
+	if err != nil {
+		log.Errorf("Error on GetNumTokens(%v): %v", pubKey, err)
+		return errors.New("server error")
+	}
+	amount := args.Tokens.Amount
+	if amount == -1 {
+		amount = bitnet.DefaultBurnAmount
+	} else if amount < -1 {
+		return errors.New("invalid burn amount")
+	}
+	if numTokens < uint64(amount) {
+		return errors.New("insufficient balance")
+	}
+
+	if err := b.Datastore.AddTokens(pubKey, -amount); err != nil {
+		log.Errorf("Error on AddTokens(%v): %v", err)
+	}
 
 	return nil
 }

@@ -114,8 +114,83 @@ func TestClaimTokens(t *testing.T) {
 	fmt.Printf("claim reply: %v\n", claimReply)
 
 	// 3) Get new challange and check balance
+	balanceReply, err := getBalance(service, master, pubKeyHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balanceReply.Balance != bitnet.TokensForAddressWithBalance {
+		t.Errorf("Did not get expected balance\nwant: %v\ngot:  %v\n",
+			bitnet.TokensForAddressWithBalance, balanceReply.Balance)
+	}
+}
+
+func TestBurn(t *testing.T) {
+	defer os.RemoveAll(util.InitTempAppDir(t))
+
+	// Tokens destination
+	master, err := genMasterKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubKey, err := master.ECPubKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubKeyHex, err := pubKeyAsHex(master)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewBitnetServiceOnHelloBlock(bitnet.BitcoinAddress(btcAddr))
+	if err := service.Datastore.AddTokens(pubKey, 1000); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1) Get challenge string
+	var challengeReply bitnet.ChallengeReply
 	if err := service.Challenge(nil, &bitnet.ChallengeArgs{}, &challengeReply); err != nil {
 		t.Fatal(err)
+	}
+
+	// 2) Burn tokens
+	burnArgs := bitnet.BurnArgs{
+		Tokens: bitnet.TokenTransaction{
+			Challenge: challengeReply.Challenge,
+			Amount:    100,
+			PubKey:    pubKeyHex,
+		},
+	}
+	privKey, err := master.ECPrivKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig, err := bitnet.GetSig(&burnArgs.Tokens, privKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	burnArgs.Tokens.Sig = sig
+	var burnReply bitnet.BurnReply
+	if err := service.Burn(nil, &burnArgs, &burnReply); err != nil {
+		t.Fatal(err)
+	}
+
+	// 3) Verify balance
+	balanceReply, err := getBalance(service, master, pubKeyHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balanceReply.Balance != 900 {
+		t.Errorf("Did not get expected balance\nwant: %v\ngot:  %v\n",
+			900, balanceReply.Balance)
+	}
+}
+
+func getBalance(service *BitnetService, master *hdkeychain.ExtendedKey, pubKeyHex string) (*bitnet.GetBalanceReply, error) {
+	var challengeReply bitnet.ChallengeReply
+	if err := service.Challenge(nil, &bitnet.ChallengeArgs{}, &challengeReply); err != nil {
+		return nil, err
 	}
 	balanceArgs := bitnet.GetBalanceArgs{
 		Challenge: challengeReply.Challenge,
@@ -123,24 +198,20 @@ func TestClaimTokens(t *testing.T) {
 	}
 	privKey, err := master.ECPrivKey()
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	sig, err := bitnet.GetSig(&balanceArgs, privKey)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	balanceArgs.Sig = sig
 	fmt.Printf("get balance args: %v\n", balanceArgs)
 	var balanceReply bitnet.GetBalanceReply
 	if err := service.GetBalance(nil, &balanceArgs, &balanceReply); err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 	fmt.Printf("balance reply: %v\n", balanceReply)
-
-	if balanceReply.Balance != bitnet.TokensForAddressWithBalance {
-		t.Errorf("Did not get expected balance\nwant: %v\ngot:  %v\n",
-			bitnet.TokensForAddressWithBalance, balanceReply.Balance)
-	}
+	return &balanceReply, nil
 }
 
 func genTestRawTx(toAddressStr string) (string, error) {

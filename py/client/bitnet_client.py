@@ -98,7 +98,6 @@ class BitnetClient:
         self._logger.info("Got response: %s", resp.json())
         return resp.json()
 
-
 # From electrum.bitcoin
 class EC_KEY(object):
     def __init__(self, k):

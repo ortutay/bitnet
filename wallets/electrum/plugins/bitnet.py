@@ -65,3 +65,4 @@ class Plugin(BasePlugin):
         
         resp = self.client.GetBalance(self.priv_key)
         self.dialog.appendPlainText("server says: " + str(resp))
+

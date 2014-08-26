@@ -19,6 +19,7 @@ const TokensPerSatoshi = uint64(1e3)
 const TokensForAddressWithBalance = uint64(1e6)
 const BitcoinSigMagic = "Bitcoin Signed Message:\n"
 const MinConfForClaimTokens = 0
+const DefaultBurnAmount = 10
 
 // Data structures
 type BitcoinAddress string
@@ -50,6 +51,7 @@ func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) boo
 
 	hash, err := hasher.SignableHash()
 	if err != nil {
+		// This should never be reached, as the called functions don't return errors
 		log.Errorf("Unexpected error getting signable hash of %v: %v", hasher, err)
 		return false
 	}
@@ -136,8 +138,8 @@ type Query struct {
 
 type TokenTransaction struct {
 	Challenge string // Challenge from the server.
-	PubKey    string // Public key storing the tokens.
 	Amount    int64  // Amount to spend. Use -1 to indicate server decides.
+	PubKey    string // Public key storing the tokens.
 	Sig       string // Signature with private key holding the tokens.
 }
 
