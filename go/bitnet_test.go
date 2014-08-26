@@ -6,6 +6,7 @@ import (
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcutil/hdkeychain"
+	"strings"
 	"testing"
 )
 
@@ -110,6 +111,9 @@ func TestValidateMessages(t *testing.T) {
 	invalidSig.Plaintext.AddHeader("-coinjoin-header", "additional data")
 	invalidSig.Plaintext.AddHeader("sender-sig", "ajkD28/a98E")
 
+	var tooLarge Message
+	tooLarge.Plaintext.Body = strings.Repeat(".", 100001)
+
 	var tests = []struct {
 		want    string
 		message *Message
@@ -137,6 +141,10 @@ func TestValidateMessages(t *testing.T) {
 		{
 			want:    `invalid sig/pubkey: "ajkD28/a98E" "02df5e440f8825d851a7e2bc8f43e14e79f32836d6710c5efbb2ed9c81ca811b02"`,
 			message: &invalidSig,
+		},
+		{
+			want:    "message size exceeds maximum: 100001 > 100000",
+			message: &tooLarge,
 		},
 	}
 

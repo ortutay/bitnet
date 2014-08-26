@@ -25,6 +25,7 @@ const TokensForAddressWithBalance = uint64(1e9)
 const BitcoinSigMagic = "Bitcoin Signed Message:\n"
 const MinConfForClaimTokens = 0
 const DefaultBurnAmount = 10
+const MaxMessageBytes = 100000 // 100KB
 
 const assumedBitcoinPrice = uint64(500) // Use approximate rate of $500/BTC
 const satoshisPerBitcoin = uint64(1e8)
@@ -170,6 +171,19 @@ func (m *Message) SignableHash() ([]byte, error) {
 	return h.Sum([]byte{}), nil
 }
 
+func (m *Message) Size() int {
+	size := 0
+	for field, value := range m.Plaintext.Headers {
+		size += len(field)
+		for _, v := range value {
+			size += len(v)
+		}
+	}
+	size += len(m.Plaintext.Body)
+	size += len(m.Encrypted)
+	return size
+}
+
 func validateDatetime(datetimes []string) error {
 	for _, datetime := range datetimes {
 		if _, err := time.Parse(time.RFC3339, datetime); err != nil {
@@ -190,7 +204,11 @@ func validatePubKey(pubKeys []string) error {
 }
 
 func (m *Message) Validate() error {
-	fmt.Printf("validate %v\n", m)
+	// TODO(ortutay): Add a max expires-datetime?
+
+	if m.Size() > MaxMessageBytes {
+		return fmt.Errorf("message size exceeds maximum: %d > %d", m.Size(), MaxMessageBytes)
+	}
 
 	// Validate plaintext headers
 	for field, value := range m.Plaintext.Headers {
