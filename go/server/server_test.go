@@ -187,7 +187,7 @@ func TestBurn(t *testing.T) {
 	}
 }
 
-func TestStoreMessage(t *testing.T) {
+func TestStoreAndGetMessage(t *testing.T) {
 	defer os.RemoveAll(util.InitTempAppDir(t))
 
 	service := NewBitnetServiceOnHelloBlock(bitnet.BitcoinAddress(btcAddr))
@@ -246,9 +246,26 @@ func TestStoreMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	storeArgs.Tokens.Sig = tokensSig
-	
+
 	if err := service.StoreMessage(nil, &storeArgs, &bitnet.StoreMessageReply{}); err != nil {
 		t.Fatal(err)
+	}
+
+	// Get the message
+	getArgs := bitnet.GetMessagesArgs{
+		Query: bitnet.Query{
+			Headers: map[string]string{"sender-pubkey =": pubKeyHex},
+		},
+	}
+	var getReply bitnet.GetMessagesReply
+	if err := service.GetMessages(nil, &getArgs, &getReply); err != nil {
+		t.Fatal(err)
+	}
+	if len(getReply.Messages) != 1 {
+		t.Fatalf("expected to get 1 message, got %d", len(getReply.Messages))
+	}
+	if getReply.Messages[0].HashHex() != msg.HashHex() {
+		t.Fatalf("messages do not match:\nwant: %v\n got: %v", msg, getReply.Messages[0])
 	}
 }
 

@@ -23,7 +23,7 @@ const (
 
 	challengeDBRelativePath     = "challenges.db"
 	usedAddressesDBRelativePath = "usedAddresses.db"
-	messagesDBRelativePath = "messages.db"
+	messagesDBRelativePath      = "messages.db"
 
 	challengeExpiresSeconds = 3600 * 24 // 24 hours
 )
@@ -62,7 +62,6 @@ func (d *Datastore) getDBForRelativePath(relPath string) (*diskv.Diskv, *sync.Mu
 }
 
 func (d *Datastore) AddTokens(pubKey *btcec.PublicKey, numTokens int64) error {
-	fmt.Printf("AddTokens(%v, %v)\n", pubKey, numTokens)
 	pubKeyStr := stringForPubKey(pubKey)
 	db, lock := d.getDBForPubKey(pubKey)
 	lock.Lock()
@@ -194,26 +193,53 @@ func (d *Datastore) HasUsedAddress(btcAddress *BitcoinAddress) bool {
 	return db.Has(btcAddress.String())
 }
 
-func (d *Datastore) StoreMessage(message *Message) error {
+func (d *Datastore) StoreMessage(msg *Message) error {
 	db, lock := d.getDBForRelativePath(messagesDBRelativePath)
 	lock.Lock()
 	defer lock.Unlock()
 
-	hash, err := message.SignableHash()
-	if err != nil {
-		return fmt.Errorf("couldn't get hash: %v", err)
-	}
-	hashHex := hex.EncodeToString(hash)
+	hashHex := hex.EncodeToString(msg.SignableHash())
 	if db.Has(hashHex) {
 		return nil
 	}
-	// Use JSON for easy inspection.
-	messageJson, err := json.Marshal(message)
+	// TODO(ortutay): Use JSON for easy inspection. Switch to another format later
+	// if there are efficiency concerns.
+	msgJSON, err := json.Marshal(msg)
 	if err != nil {
-		return fmt.Errorf("couldn't marshal %v to JSON: %v", message, err)
+		return fmt.Errorf("couldn't marshal %v to JSON: %v", msg, err)
 	}
-	if err := db.Write(hashHex, []byte(messageJson)); err != nil {
+	if err := db.Write(hashHex, []byte(msgJSON)); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (d *Datastore) GetMessages(query *Query) ([]*Message, error) {
+	// TODO(ortutay): For now, we just iterate over all messages and execut the
+	// query. This is inefficeint, and we will want to rethink how this works in
+	// the future. We will probably want to use a more efficient datastore, and we
+	// may also want to restrict query complexity.
+	db, lock := d.getDBForRelativePath(messagesDBRelativePath)
+	lock.Lock()
+	defer lock.Unlock()
+
+	var msgs []*Message
+	for key := range db.Keys() {
+		msgJSON, err := db.Read(key)
+		if err != nil {
+			return nil, fmt.Errorf("error reading message %s from datastore: %v", key, err)
+		}
+		var msg Message
+		if err := json.Unmarshal(msgJSON, &msg); err != nil {
+			// TODO(ortutay): We may want to continue processing other items, but for
+			// now, just return error.
+			return nil, fmt.Errorf("couldn't unmarshal %v from JSON: %v", string(msgJSON), err)
+		}
+		if !query.Matches(&msg) {
+			continue
+		}
+		msgs = append(msgs, &msg)
+	}
+
+	return msgs, nil
 }

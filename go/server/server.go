@@ -148,12 +148,7 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 	}
 
 	// Verify signature.
-	message, err := args.SignableHash()
-	if err != nil {
-		log.Errorf("Couldn't get message for %v: %v", args, err)
-		return errors.New("couldn't verify signature")
-	}
-	fullMessage := bitnet.BitcoinSigMagic + hex.EncodeToString(message)
+	fullMessage := bitnet.BitcoinSigMagic + hex.EncodeToString(args.SignableHash())
 
 	sigBytes, err := base64.StdEncoding.DecodeString(args.Sig)
 	if err != nil {
@@ -337,7 +332,7 @@ func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageA
 	if err != nil {
 		return err
 	}
-	
+
 	if err := args.Message.Validate(); err != nil {
 		return err
 	}
@@ -350,6 +345,23 @@ func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageA
 	if err := b.Datastore.AddTokens(pubKey, -amount); err != nil {
 		log.Errorf("Error on AddTokens(%v): %v", err)
 	}
-	
+
+	return nil
+}
+
+func (b *BitnetService) GetMessages(r *http.Request, args *bitnet.GetMessagesArgs, reply *bitnet.GetMessagesReply) error {
+	log.Infof("GetMessages(%v)", args)
+	if err := args.Query.Validate(); err != nil {
+		return fmt.Errorf("invalid query: %v", err)
+	}
+	msgs, err := b.Datastore.GetMessages(&args.Query)
+	if err != nil {
+		log.Errorf("Error on GetMesssages(%v): %v", args.Query, err)
+		return errors.New("server error")
+	}
+	reply.Messages = make([]bitnet.Message, len(msgs))
+	for i, msg := range msgs {
+		reply.Messages[i] = *msg
+	}
 	return nil
 }
