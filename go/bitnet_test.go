@@ -79,37 +79,37 @@ func TestValidateMessages(t *testing.T) {
 	invalidDatetime.Plaintext.AddHeader("datetime", "123")
 
 	var validPubKey Message
-	validPubKey.Plaintext.AddHeader("sender-pubkey", pubKeyHex)
-	validPubKey.Plaintext.AddHeader("receiver-pubkey", pubKeyHex)
+	validPubKey.Plaintext.AddHeader("from-pubkey", pubKeyHex)
+	validPubKey.Plaintext.AddHeader("to-pubkey", pubKeyHex)
 	validPubKey.Plaintext.AddHeader("expires-pubkey", pubKeyHex)
 
 	var invalidSenderPubKey Message
-	invalidSenderPubKey.Plaintext.AddHeader("receiver-pubkey", pubKeyHex)
-	invalidSenderPubKey.Plaintext.AddHeader("sender-pubkey", "deadbeaf")
+	invalidSenderPubKey.Plaintext.AddHeader("to-pubkey", pubKeyHex)
+	invalidSenderPubKey.Plaintext.AddHeader("from-pubkey", "deadbeaf")
 
 	validSig := Message{
 		Plaintext: Section{Body: "some message content"},
 		Encrypted: "aDkje840klD/ad",
 	}
 	validSig.Plaintext.AddHeader("datetime", "1985-04-12T23:20:50.52Z")
-	validSig.Plaintext.AddHeader("sender-pubkey", pubKeyHex)
+	validSig.Plaintext.AddHeader("from-pubkey", pubKeyHex)
 	validSig.Plaintext.AddHeader("type", "coinjoin")
 	validSig.Plaintext.AddHeader("-coinjoin-header", "additional data")
 	sig, err := GetSig(&validSig, privKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	validSig.Plaintext.AddHeader("sender-sig", sig)
+	validSig.Plaintext.AddHeader("from-sig", sig)
 
 	invalidSig := Message{
 		Plaintext: Section{Body: "some message content"},
 		Encrypted: "aDkje840klD/ad",
 	}
 	invalidSig.Plaintext.AddHeader("datetime", "1985-04-12T23:20:50.52Z")
-	invalidSig.Plaintext.AddHeader("sender-pubkey", pubKeyHex)
+	invalidSig.Plaintext.AddHeader("from-pubkey", pubKeyHex)
 	invalidSig.Plaintext.AddHeader("type", "coinjoin")
 	invalidSig.Plaintext.AddHeader("-coinjoin-header", "additional data")
-	invalidSig.Plaintext.AddHeader("sender-sig", "ajkD28/a98E")
+	invalidSig.Plaintext.AddHeader("from-sig", "ajkD28/a98E")
 
 	var tooLarge Message
 	tooLarge.Plaintext.Body = strings.Repeat(".", 100001)
@@ -131,7 +131,7 @@ func TestValidateMessages(t *testing.T) {
 			message: &validPubKey,
 		},
 		{
-			want:    "invalid sender-pubkey",
+			want:    "invalid from-pubkey",
 			message: &invalidSenderPubKey,
 		},
 		{

@@ -122,9 +122,9 @@ type Section struct {
 	//    Sigatures are of the message hash as-received, ensuring the relay order
 	//    cannot be forged after the fact, although it is possible for servers to
 	//    omit their signature.
-	// - "sender-pubkey": Public key of the sender.
-	// - "sender-sig": Signature of sender corresponding to "sender-public-key".
-	// - "receiver-pubkey": Public key of the intended recepient. If there is
+	// - "from-pubkey": Public key of the sender.
+	// - "from-sig": Signature of sender corresponding to "from-pubkey".
+	// - "to-pubkey": Public key of the intended recepient. If there is
 	//    an encrypted section, the corresponding private key can decrypt it.
 	// - "expires-datetime": Tells the server to delete the message after a
 	//    given date/time.
@@ -154,7 +154,7 @@ func (m *Message) SignableHash() ([]byte, error) {
 
 	var headerFields []string
 	for field, _ := range m.Plaintext.Headers {
-		if field == "sender-sig" {
+		if field == "from-sig" {
 			continue
 		}
 		headerFields = append(headerFields, field)
@@ -217,7 +217,7 @@ func (m *Message) Validate() error {
 			if err := validateDatetime(value); err != nil {
 				return fmt.Errorf("invalid %s: %v", field, err)
 			}
-		case "sender-pubkey", "receiver-pubkey", "expires-pubkey":
+		case "from-pubkey", "to-pubkey", "expires-pubkey":
 			if err := validatePubKey(value); err != nil {
 				return fmt.Errorf("invalid %s", field)
 			}
@@ -227,15 +227,15 @@ func (m *Message) Validate() error {
 	// Public keys fields have been validated, check signatures
 	for field, _ := range m.Plaintext.Headers {
 		switch field {
-		case "sender-sig":
-			senderPubKeys, ok := m.Plaintext.Headers["sender-pubkey"]
+		case "from-sig":
+			senderPubKeys, ok := m.Plaintext.Headers["from-pubkey"]
 			if !ok {
-				return errors.New("got sender-sig, but missing sender-pubkey")
+				return errors.New("got from-sig, but missing from-pubkey")
 			}
-			senderSigs := m.Plaintext.Headers["sender-sig"]
+			senderSigs := m.Plaintext.Headers["from-sig"]
 			if len(senderPubKeys) != len(senderSigs) {
 				return fmt.Errorf(
-					"mismatched sender-pubkey and sender-sig lengths: %d = %d",
+					"mismatched from-pubkey and from-sig lengths: %d = %d",
 					len(senderPubKeys), len(senderSigs))
 			}
 			for i, pubKeyHex := range senderPubKeys {

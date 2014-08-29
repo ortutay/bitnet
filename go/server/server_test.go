@@ -225,14 +225,14 @@ func TestStoreMessage(t *testing.T) {
 		Encrypted: "aDkje840klD/ad",
 	}
 	msg.Plaintext.AddHeader("datetime", "1985-04-12T23:20:50.52Z")
-	msg.Plaintext.AddHeader("sender-pubkey", pubKeyHex)
+	msg.Plaintext.AddHeader("from-pubkey", pubKeyHex)
 	msg.Plaintext.AddHeader("type", "coinjoin")
 	msg.Plaintext.AddHeader("-coinjoin-header", "additional data")
 	sig, err := bitnet.GetSig(&msg, privKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg.Plaintext.AddHeader("sender-sig", sig)
+	msg.Plaintext.AddHeader("from-sig", sig)
 	storeArgs := bitnet.StoreMessageArgs{
 		Tokens: bitnet.TokenTransaction{
 			Challenge: challengeReply.Challenge,
