@@ -25,6 +25,7 @@ const sigMagic = "Bitcoin Signed Message:\n"
 
 var testnet = flag.Bool("testnet", true, "Use testnet")
 var allowFreeTokens = flag.Bool("allow_free_tokens", true, "Allow users to get free tokens")
+var addr = flag.String("addr", ":8555", "Address to listen on")
 
 type BitnetService struct {
 	Bitcoin         Bitcoin
@@ -51,8 +52,7 @@ func NewBitnetServiceOnHelloBlock(address bitnet.BitcoinAddress) *BitnetService 
 
 func main() {
 	flag.Parse()
-	addr := "localhost:8555"
-	log.Infof("Listening on %v...", addr)
+	log.Infof("Listening on %v...", *addr)
 
 	// TODO(ortutay): Do not use static addresses.
 	var btcAddr bitnet.BitcoinAddress
@@ -68,7 +68,7 @@ func main() {
 	server.RegisterCodec(json.NewCodec(), "application/json")
 	server.RegisterService(bitnet, "Bitnet")
 	http.Handle("/bitnetRPC", server)
-	http.ListenAndServe(addr, nil)
+	http.ListenAndServe(*addr, nil)
 }
 
 func netParams() *btcnet.Params {
@@ -80,6 +80,7 @@ func netParams() *btcnet.Params {
 }
 
 func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, reply *bitnet.BuyTokensReply) error {
+	defer log.Flush()
 	log.Infof("Handling BuyTokens %v\n", args)
 	txData, err := hex.DecodeString(args.RawTx)
 	if err != nil {
@@ -132,6 +133,7 @@ func (b *BitnetService) BuyTokens(r *http.Request, args *bitnet.BuyTokensArgs, r
 }
 
 func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArgs, reply *bitnet.ClaimTokensReply) error {
+	defer log.Flush()
 	log.Infof("ClaimTokens(%v)", args)
 
 	tokensPubKey, err := util.PubKeyFromHex(args.PubKey)
@@ -235,6 +237,7 @@ func (b *BitnetService) ClaimTokens(r *http.Request, args *bitnet.ClaimTokensArg
 }
 
 func (b *BitnetService) Challenge(r *http.Request, args *bitnet.ChallengeArgs, reply *bitnet.ChallengeReply) error {
+	defer log.Flush()
 	// TODO(ortutay): This is susceptible to DOS attack in two ways:
 	// 1) Filling the datastore with lots of challenge strings.
 	// 2) Exhausting entropy on the system.
@@ -261,6 +264,7 @@ func (b *BitnetService) Challenge(r *http.Request, args *bitnet.ChallengeArgs, r
 }
 
 func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs, reply *bitnet.GetBalanceReply) error {
+	defer log.Flush()
 	log.Infof("GetBalance(%v)", args)
 	pubKey, err := util.PubKeyFromHex(args.PubKey)
 	if err != nil {
@@ -282,6 +286,7 @@ func (b *BitnetService) GetBalance(r *http.Request, args *bitnet.GetBalanceArgs,
 }
 
 func (b *BitnetService) checkTokens(pubKey *btcec.PublicKey, tokens *bitnet.TokenTransaction) (int64, error) {
+	defer log.Flush()
 	if !bitnet.CheckSig(tokens.Sig, tokens, pubKey) {
 		return 0, errors.New("invalid signature on tokens")
 	}
@@ -303,6 +308,7 @@ func (b *BitnetService) checkTokens(pubKey *btcec.PublicKey, tokens *bitnet.Toke
 }
 
 func (b *BitnetService) Burn(r *http.Request, args *bitnet.BurnArgs, reply *bitnet.BurnReply) error {
+	defer log.Flush()
 	log.Infof("Burn(%v)", args)
 	pubKey, err := util.PubKeyFromHex(args.Tokens.PubKey)
 	if err != nil {
@@ -321,6 +327,7 @@ func (b *BitnetService) Burn(r *http.Request, args *bitnet.BurnArgs, reply *bitn
 }
 
 func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageArgs, reply *bitnet.StoreMessageReply) error {
+	defer log.Flush()
 	log.Infof("StoreMessage(%v)", args)
 
 	pubKey, err := util.PubKeyFromHex(args.Tokens.PubKey)
@@ -350,6 +357,7 @@ func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageA
 }
 
 func (b *BitnetService) GetMessages(r *http.Request, args *bitnet.GetMessagesArgs, reply *bitnet.GetMessagesReply) error {
+	defer log.Flush()
 	log.Infof("GetMessages(%v)", args)
 	if err := args.Query.Validate(); err != nil {
 		return fmt.Errorf("invalid query: %v", err)
