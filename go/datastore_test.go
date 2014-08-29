@@ -70,6 +70,11 @@ func TestQuery(t *testing.T) {
 			want:  []*Message{&m1, &m2, &m3},
 		},
 		{
+			desc:  "string equals (default op is equals)",
+			query: &Query{Headers: map[string]string{"from": "abcuser"}},
+			want:  []*Message{&m1, &m2, &m3},
+		},
+		{
 			desc:  "string not equal (at least one match makes expression true)",
 			query: &Query{Headers: map[string]string{"to !=": "otheruser"}},
 			want:  []*Message{&m1, &m3},

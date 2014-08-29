@@ -271,7 +271,13 @@ func getFieldAndOp(key string) (string, string, error) {
 	if len(s) > 2 {
 		return "", "", fmt.Errorf("invalid key %q contains over 2 spaces", key)
 	}
-	return s[0], s[1], nil
+	var op string
+	if len(s) == 1 {
+		op = "="
+	} else {
+		op = s[1]
+	}
+	return s[0], op, nil
 }
 
 func (q *Query) Validate() error {
