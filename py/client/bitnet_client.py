@@ -2,6 +2,7 @@
 
 import base64
 import binascii
+import datetime
 import ecdsa
 import hashlib
 import json
@@ -37,31 +38,27 @@ class BitnetClient:
     def __init__(self, id_priv="", enc_priv="", addr=_DEFAULT_ADDR):
         if not id_priv:
             # TODO(ortutay): generate random
-            id_priv="00"
-
-        if isinstance(id_priv, basestring):
-            id_priv = EC_KEY(id_priv)
-        elif not isinstance(id_priv, EC_KEY):
-            raise Exception("id_priv must be string or EC_KEY")
+            id_priv="id priv seed"
+        self.SetIdPriv(id_priv)
 
         # TODO(ortutay): handle enc_priv
 
         self._listeners = {}
         self._next_listener_id = 1
         self._seen_messages = set([])
-        self.id_priv = id_priv
         self.url = "http://%s/bitnetRPC" % addr
-        resp = ClaimTokens(self.url, "", self.PubKeyStr(), "", "claimfree")
-        if resp["error"]:
-            raise Exception("Couldn't claim tokens: " + resp["error"])
+        ClaimTokens(self.url, "", self.PubKeyStr(), "", "claimfree")
 
+    def SetIdPriv(self, id_priv):
+        if not isinstance(id_priv, EC_KEY):
+            id_priv = EC_KEY(str(id_priv))
+        self.id_priv = id_priv
+        
     def PubKeyStr(self):
         return self.id_priv.get_public_key()
 
     def Tokens(self, amount):
         resp = Challenge(self.url)
-        if resp["error"]:
-            raise BitnetRPCException(resp["error"])
         challenge = resp["result"]["Challenge"]
         signable = sha256(challenge + str(amount))
         sig = Sign(signable, self.id_priv)
@@ -73,15 +70,18 @@ class BitnetClient:
             }
         return tokens
         
-    def Send(self, to_pubkey, message):
+    def Send(self, to_pub_key, message):
         # TODO(ortutay): Cached-pull of recepients privkey, and then encrypt.
         # TODO(ortutay): Default to encryption, and allow plaintext send only
         # with explicit override.
-        if isinstance(message, basestring):
+        if not "body" in message:
+            dt = datetime.datetime.utcnow().isoformat("T") + "Z"
             message = {
                 "type": "bitnet.Plain",
-                "to-pubkey": to_pubkey,
-                "body": message,
+                "datetime": dt,
+                "to-pubkey": str(to_pub_key),
+                "from-pubkey": self.PubKeyStr(),
+                "body": str(message),
             }
         if "encrypted_body" in message:
             raise Exception("Message encryption not yet implemented")
@@ -106,7 +106,8 @@ class BitnetClient:
             "Encrypted": "",
             }
         tokens = self.Tokens(-1)
-        resp = StoreMessage(self.url, tokens, message)
+        # TODO(ortutay): In Python, might be better to "raise" here.
+        return StoreMessage(self.url, tokens, message)
 
     def Listen(self, handler, query=None):
         if not query:
@@ -115,10 +116,11 @@ class BitnetClient:
         tokens = self.Tokens(-1)
         def periodic_poll(client, url, handler, tokens, query):
             while True:
-                resp = GetMessages(url, tokens, query)
-                if resp["error"]:
+                try:
+                    resp = GetMessages(url, tokens, query)
+                except BitnetRPCException as e:
                     _logger.error("Error on GetMessages(%s, %s): %s" % (
-                        tokens, query, resp["error"]))
+                        tokens, query, str(e)))
                     continue
                 for msg in resp["result"]["Messages"]:
                     h = ""
@@ -131,7 +133,7 @@ class BitnetClient:
                             continue
                         client._seen_messages.add(h)
                     handler(msg)
-                time.sleep(10)
+                time.sleep(.1)
         id = "get-messages-poll-%d" % self._next_listener_id
         self._next_listener_id += 1
         thr = threading.Thread(
@@ -139,71 +141,11 @@ class BitnetClient:
             args=(self, self.url, handler, tokens, query))
         thr.daemon = True
         thr.start()
-        
-        # self._listeners[id] = thread.start_new_thread(
-        #     periodic_poll, )
+        return id
 
-
-class BitnetClient_old:
-    def __init__(self, addr):
-        self._url = "http://%s/bitnetRPC" % addr
-
-    def BuyTokens(self, raw_tx, pub_key):
-        req = {
-            "method": "Bitnet.BuyTokens",
-            "params": [{"RawTx": raw_tx, "PubKey": pub_key}],
-            "id": 0,
-            }
-        self._logger.info("Sending request to %s: %s", self._url, str(req))
-        resp = requests.post(
-            self._url, data=json.dumps(req), headers=_JSON_RPC_HEADERS)
-        self._logger.info("Got response: %s", resp)
-        return resp.json()
-
-    def ClaimTokens(self, challenge, pub_key, bitcoin_address, sig):
-        req = {
-            "method": "Bitnet.ClaimTokens",
-            "params": [{
-                "Challenge": challenge,
-                "PubKey": pub_key,
-                "BitcoinAddress": bitcoin_address,
-                "Sig": sig,
-            }],
-            "id": 0,
-        }
-        self._logger.info("Sending request to %s: %s", self._url, str(req))
-        resp = requests.post(
-            self._url, data=json.dumps(req), headers=_JSON_RPC_HEADERS)
-        self._logger.info("Got response: %s", resp)
-        return resp.json()
-
-    # Args:
-    #   priv_key: EC_KEY
-    def GetBalance(self, priv_key):
-        challenge_resp = self.Challenge()
-        if challenge_resp["error"]:
-            return {"error": challenge_resp["error"]}
-        pub_key_str = priv_key.get_public_key()
-        challenge = challenge_resp['result']['Challenge']
-        to_sign = sha256(challenge + pub_key_str)
-        sk = ecdsa.SigningKey.from_secret_exponent(
-            priv_key.secret,curve=ecdsa.curves.SECP256k1)
-        sig = sk.sign_digest(to_sign, sigencode=ecdsa.util.sigencode_der)
-        sig_enc = base64.b64encode(sig)
-        req = {
-            "method": "Bitnet.GetBalance",
-            "params": [{
-                "Challenge": challenge,
-                "PubKey": pub_key_str,
-                "Sig": sig_enc,
-            }],
-            "id": 0,
-        }
-        self._logger.info("Sending request to %s: %s", self._url, str(req))
-        resp = requests.post(
-            self._url, data=json.dumps(req), headers=_JSON_RPC_HEADERS)
-        self._logger.info("Got response: %s", resp.json())
-        return resp.json()
+    def StopListening(self, id):
+        # TODO(ortutay): implement
+        pass
 
 def Challenge(url):
     req = {
@@ -252,7 +194,10 @@ def _DoRPC(url, req):
     _logger.info("Sending request to %s: %s", url, str(req))
     resp = requests.post(url, data=json.dumps(req), headers=_JSON_RPC_HEADERS)
     _logger.info("Got response: %s, %s", resp, resp.json())
-    return resp.json()
+    resp_json = resp.json()
+    if resp_json["error"]:
+        raise BitnetRPCException(resp_json["error"])
+    return resp_json
 
 def Sign(msg, priv_key):
     sk = ecdsa.SigningKey.from_secret_exponent(
@@ -282,9 +227,3 @@ def sha256(x):
 
 if __name__ == "__main__":
     client = BitnetClient2()
-    # addr = "54.187.157.104:8555"
-    # priv_key = EC_KEY("00")
-    # client = BitnetClient(addr)
-    # pub_key_str = priv_key.get_public_key()
-    # resp = client.ClaimTokens("", pub_key_str, "", "claimfree")
-    # print "claim tokens resp:", resp
