@@ -23,7 +23,7 @@ const (
 
 	challengeDBRelativePath     = "challenges.db"
 	usedAddressesDBRelativePath = "usedAddresses.db"
-	messagesDBRelativePath = "messages.db"
+	messagesDBRelativePath      = "messages.db"
 
 	challengeExpiresSeconds = 3600 * 24 // 24 hours
 )

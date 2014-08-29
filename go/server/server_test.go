@@ -246,7 +246,7 @@ func TestStoreMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	storeArgs.Tokens.Sig = tokensSig
-	
+
 	if err := service.StoreMessage(nil, &storeArgs, &bitnet.StoreMessageReply{}); err != nil {
 		t.Fatal(err)
 	}

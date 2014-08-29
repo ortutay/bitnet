@@ -337,7 +337,7 @@ func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageA
 	if err != nil {
 		return err
 	}
-	
+
 	if err := args.Message.Validate(); err != nil {
 		return err
 	}
@@ -350,6 +350,6 @@ func (b *BitnetService) StoreMessage(r *http.Request, args *bitnet.StoreMessageA
 	if err := b.Datastore.AddTokens(pubKey, -amount); err != nil {
 		log.Errorf("Error on AddTokens(%v): %v", err)
 	}
-	
+
 	return nil
 }
