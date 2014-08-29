@@ -369,6 +369,7 @@ func (b *BitnetService) GetMessages(r *http.Request, args *bitnet.GetMessagesArg
 	}
 	reply.Messages = make([]bitnet.Message, len(msgs))
 	for i, msg := range msgs {
+		msg.Headers["message-hash"] = msg.HashHex()
 		reply.Messages[i] = *msg
 	}
 	return nil
