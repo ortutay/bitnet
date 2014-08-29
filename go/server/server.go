@@ -51,7 +51,7 @@ func NewBitnetServiceOnHelloBlock(address bitnet.BitcoinAddress) *BitnetService 
 
 func main() {
 	flag.Parse()
-	addr := "localhost:4000"
+	addr := "localhost:8555"
 	log.Infof("Listening on %v...", addr)
 
 	// TODO(ortutay): Do not use static addresses.
