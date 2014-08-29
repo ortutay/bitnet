@@ -2,7 +2,6 @@ package bitnet
 
 import (
 	"bitbucket.org/ortutay/bitnet/util"
-	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -13,6 +12,7 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	log "github.com/golang/glog"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -27,6 +27,8 @@ const MinConfForClaimTokens = 0
 const DefaultBurnAmount = 10
 const MaxMessageBytes = 100000 // 100KB
 
+// TODO(ortutay): We may want to tweak these constants, and/or make them flag
+// configurable.
 const assumedBitcoinPrice = uint64(500) // Use approximate rate of $500/BTC
 const satoshisPerBitcoin = uint64(1e8)
 const storeMessageUSDPrice = float64(.00000001) // 1 penny stores 1M messages
@@ -49,7 +51,7 @@ func (ba *BitcoinAddress) String() string {
 }
 
 type SignableHasher interface {
-	SignableHash() ([]byte, error)
+	SignableHash() []byte
 }
 
 func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) bool {
@@ -63,39 +65,19 @@ func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) boo
 		return false
 	}
 
-	hash, err := hasher.SignableHash()
-	if err != nil {
-		// This should never be reached, as the called functions don't return errors
-		log.Errorf("Unexpected error getting signable hash of %v: %v", hasher, err)
-		return false
-	}
-
-	return sig.Verify(hash, pubKey)
+	return sig.Verify(hasher.SignableHash(), pubKey)
 }
 
 func GetSig(hasher SignableHasher, privKey *btcec.PrivateKey) (string, error) {
-	hash, err := hasher.SignableHash()
-	if err != nil {
-		log.Errorf("Unexpected error getting signable hash of %v: %v", hasher, err)
-		return "", fmt.Errorf("couldn't get hash: %v", err)
-	}
-
-	sig, err := privKey.Sign(hash)
+	sig, err := privKey.Sign(hasher.SignableHash())
 	if err != nil {
 		return "", fmt.Errorf("couldn't sign: %v", err)
 	}
-
 	return base64.StdEncoding.EncodeToString(sig.Serialize()), nil
 }
 
 func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr string, netParams *btcnet.Params) (string, error) {
-	hash, err := hasher.SignableHash()
-	if err != nil {
-		log.Errorf("Unexpected error getting signable hash of %v: %v", hasher, err)
-		return "", fmt.Errorf("couldn't get hash: %v", err)
-	}
-
-	fullMessage := BitcoinSigMagic + hex.EncodeToString(hash)
+	fullMessage := BitcoinSigMagic + hex.EncodeToString(hasher.SignableHash())
 	compressed, err := isCompressed(privKey, btcAddr, netParams)
 	if err != nil {
 		return "", fmt.Errorf("couldn't check compression: %v", err)
@@ -130,6 +112,9 @@ type Section struct {
 	//    given date/time.
 	// - "expires-pubkey": Tells the server to delete the message after a given
 	//    public key(s) has gotten it.
+	// Reserved header:
+	// - "message-hash": SHA-256 hash of the message, hex encoded. This field
+	//    must not be set, and is instead calculated on the fly as needed.
 	Headers map[string][]string
 	Body    string
 }
@@ -149,7 +134,7 @@ type Message struct {
 	Encrypted string
 }
 
-func (m *Message) SignableHash() ([]byte, error) {
+func (m *Message) SignableHash() []byte {
 	h := sha256.New()
 
 	var headerFields []string
@@ -168,7 +153,11 @@ func (m *Message) SignableHash() ([]byte, error) {
 	h.Write([]byte(m.Plaintext.Body))
 	h.Write([]byte(m.Encrypted))
 
-	return h.Sum([]byte{}), nil
+	return h.Sum([]byte{})
+}
+
+func (m *Message) HashHex() string {
+	return hex.EncodeToString(m.SignableHash())
 }
 
 func (m *Message) Size() int {
@@ -194,7 +183,6 @@ func validateDatetime(datetimes []string) error {
 }
 
 func validatePubKey(pubKeys []string) error {
-	fmt.Printf("validate pubkey %v\n", pubKeys)
 	for _, pubKeyHex := range pubKeys {
 		if _, err := util.PubKeyFromHex(pubKeyHex); err != nil {
 			return err
@@ -212,6 +200,9 @@ func (m *Message) Validate() error {
 
 	// Validate plaintext headers
 	for field, value := range m.Plaintext.Headers {
+		if strings.Contains(field, " ") {
+			return fmt.Errorf("invalid header field %q contains space", field)
+		}
 		switch field {
 		case "datetime", "expires-datetime":
 			if err := validateDatetime(value); err != nil {
@@ -221,6 +212,8 @@ func (m *Message) Validate() error {
 			if err := validatePubKey(value); err != nil {
 				return fmt.Errorf("invalid %s", field)
 			}
+		case "message-hash":
+			return fmt.Errorf("header %s is reserved", field)
 		}
 	}
 
@@ -254,10 +247,121 @@ func (m *Message) Validate() error {
 }
 
 type Query struct {
-	MessageHash []string          // If set, match on the message hash.
-	Headers     map[string]string // If set, do equality check on message headers.
-	// TODO(ortutay): We will want more advanced querying in the future, but for
-	// now this will be enough.
+	// Match based on the message headers. The operators =, !=, <, >, <= and >=
+	// are supported.
+	// Examples:
+	//
+	//   Headers["some-field ="] = "value"
+	//   Headers["some-field !="] = "value"
+	//   Headers["some-field >="] = "value"
+	//
+	// The = and != operators will do a string comparison on the values.
+	// The <, >, <=, >= operators will attempt to convert both strings into
+	// numbers, and do a numerical comparison.
+	//
+	// TODO(ortutay): We can use gt, lt, gte, lte to indicate string order
+	// comparison.
+	// TODO(ortutay): We can use the ~ operator to indicate a hex-encoded Blooom
+	// filter.
+	Headers map[string]string
+}
+
+func getFieldAndOp(key string) (string, string, error) {
+	s := strings.Split(key, " ")
+	if len(s) > 2 {
+		return "", "", fmt.Errorf("invalid key %q contains over 2 spaces", key)
+	}
+	return s[0], s[1], nil
+}
+
+func (q *Query) Validate() error {
+	for key, _ := range q.Headers {
+		_, op, err := getFieldAndOp(key)
+		if err != nil {
+			return err
+		}
+		switch op {
+		case "=", "!=", "<", ">", "<=", ">=":
+			continue
+		default:
+			return fmt.Errorf("unhandled operator: %q", op)
+		}
+	}
+	return nil
+}
+
+func (q *Query) Matches(msg *Message) bool {
+	if err := q.Validate(); err != nil {
+		log.Errorf("Invalid query %v: %v", q, err)
+		return false
+	}
+	msgHash := msg.HashHex()
+	for key, target := range q.Headers {
+		matches := false
+		field, op, _ := getFieldAndOp(key)
+		var values []string
+		var ok bool
+		if field == "message-hash" {
+			ok = true
+			values = make([]string, 1)
+			values[0] = msgHash
+		} else {
+			values, ok = msg.Plaintext.Headers[field]
+		}
+		switch op {
+		case "=":
+			if !ok && target != "" {
+				return false
+			}
+			for _, value := range values {
+				if target == value {
+					matches = true
+					continue
+				}
+			}
+		case "!=":
+			if !ok && target == "" {
+				continue
+			}
+			for _, value := range values {
+				if target != value {
+					matches = true
+					continue
+				}
+			}
+		case "<", ">", "<=", ">=":
+			// Try comparing as rational number
+			var targetBigRat big.Rat
+			_, validAsRat := targetBigRat.SetString(target)
+			if validAsRat {
+				for _, value := range values {
+					var valueBigRat big.Rat
+					_, iterValidAsRat := valueBigRat.SetString(value)
+					if !iterValidAsRat {
+						continue
+					}
+					cmp := valueBigRat.Cmp(&targetBigRat)
+					switch {
+					// value < target
+					case cmp == -1 && (op == "<" || op == "<="):
+						matches = true
+
+					// value = target
+					case cmp == 0 && (op == "=" || op == "<=" || op == ">="):
+						matches = true
+
+					// value > target
+					case cmp == 1 && (op == ">" || op == ">="):
+						matches = true
+					}
+				}
+			}
+		}
+		if !matches {
+			return false
+		}
+	}
+	return true
 }
 
 type TokenTransaction struct {
@@ -267,11 +371,11 @@ type TokenTransaction struct {
 	Sig       string // Signature with private key holding the tokens.
 }
 
-func (t *TokenTransaction) SignableHash() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteString(t.Challenge)
-	buf.WriteString(strconv.FormatInt(t.Amount, 10))
-	return doSHA256(buf.Bytes())
+func (t *TokenTransaction) SignableHash() []byte {
+	h := sha256.New()
+	h.Write([]byte(t.Challenge))
+	h.Write([]byte(strconv.FormatInt(t.Amount, 10)))
+	return h.Sum([]byte{})
 }
 
 // Token management
@@ -302,12 +406,12 @@ type ClaimTokensArgs struct {
 	Sig            string // Bitcoin signature of the challenge and public key.
 }
 
-func (a *ClaimTokensArgs) SignableHash() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteString(a.Challenge)
-	buf.WriteString(a.PubKey)
-	buf.WriteString(a.BitcoinAddress)
-	return doSHA256(buf.Bytes())
+func (a *ClaimTokensArgs) SignableHash() []byte {
+	h := sha256.New()
+	h.Write([]byte(a.Challenge))
+	h.Write([]byte(a.PubKey))
+	h.Write([]byte(a.BitcoinAddress))
+	return h.Sum([]byte{})
 }
 
 type ClaimTokensReply struct {
@@ -326,11 +430,11 @@ type GetBalanceArgs struct {
 	Sig       string // Signature of the args.
 }
 
-func (a *GetBalanceArgs) SignableHash() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteString(a.Challenge)
-	buf.WriteString(a.PubKey)
-	return doSHA256(buf.Bytes())
+func (a *GetBalanceArgs) SignableHash() []byte {
+	h := sha256.New()
+	h.Write([]byte(a.Challenge))
+	h.Write([]byte(a.PubKey))
+	return h.Sum([]byte{})
 }
 
 type GetBalanceReply struct {
@@ -365,13 +469,12 @@ type ListMessagesReply struct {
 }
 
 type GetMessagesArgs struct {
-	Tokens TokenTransaction
-	Query  Query
+	Query Query
 }
 
 type GetMessagesReply struct {
 	Messages []Message
-	Sig      string
+	Sig      string // TODO(ortutay): what is this for??
 }
 
 func doSHA256(data []byte) ([]byte, error) {

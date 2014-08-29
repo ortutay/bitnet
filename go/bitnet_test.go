@@ -114,6 +114,9 @@ func TestValidateMessages(t *testing.T) {
 	var tooLarge Message
 	tooLarge.Plaintext.Body = strings.Repeat(".", 100001)
 
+	var containsHash Message
+	containsHash.Plaintext.AddHeader("message-hash", "abc")
+
 	var tests = []struct {
 		want    string
 		message *Message
@@ -145,6 +148,10 @@ func TestValidateMessages(t *testing.T) {
 		{
 			want:    "message size exceeds maximum: 100001 > 100000",
 			message: &tooLarge,
+		},
+		{
+			want:    "header message-hash is reserved",
+			message: &containsHash,
 		},
 	}
 
