@@ -6,7 +6,7 @@ FLAGS=$2
 
 BINARY_NAME=bitnet_server
 
-go build -o $BINARY_NAME bitbucket.org/ortutay/bitnet/server
+go build -o $BINARY_NAME github.com/ortutay/bitnet/server
 
 echo "Connecting to $IP to launch $BINARY_NAME with flags $FLAGS"
 
