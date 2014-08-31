@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/gorilla/mux"
 	"bitbucket.org/ortutay/bitnet"
 	"bitbucket.org/ortutay/bitnet/util"
 	"crypto/rand"
@@ -52,8 +53,9 @@ func NewBitnetServiceOnHelloBlock(address bitnet.BitcoinAddress) *BitnetService 
 
 func main() {
 	flag.Parse()
-	log.Infof("Listening on %v...", *addr)
+	log.Infof("Bitnet RPC listening on %v...", *addr)
 
+	// Start Bitnet RPC server
 	// TODO(ortutay): Do not use static addresses.
 	var btcAddr bitnet.BitcoinAddress
 	if *testnet {
@@ -63,12 +65,20 @@ func main() {
 	}
 	bitnet := NewBitnetServiceOnHelloBlock(btcAddr)
 	log.Infof("Bitnet service %v", bitnet)
-
 	server := rpc.NewServer()
 	server.RegisterCodec(json.NewCodec(), "application/json")
 	server.RegisterService(bitnet, "Bitnet")
 	http.Handle("/bitnetRPC", server)
-	http.ListenAndServe(*addr, nil)
+	go http.ListenAndServe(*addr, nil)
+
+	// Start HTTP server
+	r := mux.NewRouter()
+	r.HandleFunc("/", HomeHandler)
+	http.Handle("/", r)
+
+	port := fmt.Sprintf(":%d", 8080)
+	log.Infof("HTTP listening on %v...", port)
+	http.ListenAndServe(port, nil)
 }
 
 func netParams() *btcnet.Params {
@@ -369,7 +379,6 @@ func (b *BitnetService) GetMessages(r *http.Request, args *bitnet.GetMessagesArg
 	}
 	reply.Messages = make([]bitnet.Message, len(msgs))
 	for i, msg := range msgs {
-		msg.Headers["message-hash"] = msg.HashHex()
 		reply.Messages[i] = *msg
 	}
 	return nil
