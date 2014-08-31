@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bitbucket.org/ortutay/bitnet"
+	"github.com/ortutay/bitnet"
 	"fmt"
 	"github.com/gorilla/rpc/json"
 	"net/http"
