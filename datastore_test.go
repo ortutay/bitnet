@@ -1,9 +1,9 @@
 package bitnet
 
 import (
-	"github.com/ortutay/bitnet/util"
 	"fmt"
 	"github.com/conformal/btcec"
+	"github.com/ortutay/bitnet/util"
 	"os"
 	"strings"
 	"testing"
@@ -49,6 +49,12 @@ func TestQuery(t *testing.T) {
 	var m5 Message
 	m5.Plaintext.AddHeader("price", "11.134")
 
+	var m6 Message
+	m6.Plaintext.AddHeader("datetime", "1985-04-12T23:20:50.52Z")
+
+	var m7 Message
+	m7.Plaintext.AddHeader("datetime", "1986-04-12T23:20:50.52Z")
+
 	defer os.RemoveAll(util.InitTempAppDir(t))
 	d := NewDatastore()
 	d.StoreMessage(&m1)
@@ -56,6 +62,8 @@ func TestQuery(t *testing.T) {
 	d.StoreMessage(&m3)
 	d.StoreMessage(&m4)
 	d.StoreMessage(&m5)
+	d.StoreMessage(&m6)
+	d.StoreMessage(&m7)
 
 	m1Hash := m1.HashHex()
 
@@ -98,6 +106,13 @@ func TestQuery(t *testing.T) {
 			desc:  "message-hash equals",
 			query: &Query{Headers: map[string]string{"message-hash =": m1Hash}},
 			want:  []*Message{&m1},
+		},
+		{
+			desc: "datetime greater than",
+			query: &Query{Headers: map[string]string{
+				"datetime >": "1985-05-12T23:20:50.52Z",
+			}},
+			want: []*Message{&m7},
 		},
 	}
 

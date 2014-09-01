@@ -1,7 +1,6 @@
 package bitnet
 
 import (
-	"github.com/ortutay/bitnet/util"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -12,6 +11,7 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	log "github.com/golang/glog"
+	"github.com/ortutay/bitnet/util"
 	"math/big"
 	"sort"
 	"strconv"
@@ -313,6 +313,20 @@ func (q *Query) Matches(msg *Message) bool {
 			values[0] = msgHash
 		} else {
 			values, ok = msg.Plaintext.Headers[field]
+		}
+		if field == "datetime" {
+			timestamps := make([]string, len(values))
+			for i, value := range values {
+				t, err := time.Parse(time.RFC3339, value)
+				if err == nil {
+					timestamps[i] = strconv.FormatInt(t.Unix(), 10)
+				}
+			}
+			t, err := time.Parse(time.RFC3339, target)
+			if err == nil {
+				target = strconv.FormatInt(t.Unix(), 10)
+			}
+			values = timestamps
 		}
 		switch op {
 		case "=":
