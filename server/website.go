@@ -1,9 +1,9 @@
 package main
 
 import (
+	log "github.com/golang/glog"
 	"html/template"
 	"net/http"
-	log "github.com/golang/glog"
 )
 
 var indexTmpl = template.Must(
@@ -35,7 +35,7 @@ func HomeHandler(w http.ResponseWriter, r *http.Request) {
 
 func ErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 	log.Infof("Error: %v\nfor request: %v\n", err, r)
-	if (IsAdmin(r)) {
+	if IsAdmin(r) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

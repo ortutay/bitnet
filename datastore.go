@@ -1,13 +1,13 @@
 package bitnet
 
 import (
-	"github.com/ortutay/bitnet/util"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/conformal/btcec"
 	log "github.com/golang/glog"
+	"github.com/ortutay/bitnet/util"
 	"github.com/peterbourgon/diskv"
 	"math"
 	"strconv"

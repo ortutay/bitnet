@@ -1,9 +1,6 @@
 package main
 
 import (
-	"github.com/gorilla/mux"
-	"github.com/ortutay/bitnet"
-	"github.com/ortutay/bitnet/util"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -16,8 +13,11 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	log "github.com/golang/glog"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/rpc"
 	"github.com/gorilla/rpc/json"
+	"github.com/ortutay/bitnet"
+	"github.com/ortutay/bitnet/util"
 	"net/http"
 	"time"
 )
