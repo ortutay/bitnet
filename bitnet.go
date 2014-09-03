@@ -1,6 +1,21 @@
 package bitnet
 
+// bitnet contains the RPC argument and reply data structure for the bitnet
+// service.
+//
+// The basic interaction between the client and server is getting and storing
+// messages. A message has a plain-text section and an encrypted section, and
+// the plain-text section is further broken into headers and the body. Getting
+// messages is done via a query, which contains filters on various headers in
+// the messages.
+//
+// For anti-spam, the server may optionally charge some number of
+// tokens for each of these actions. Tokens can be purchased from the server
+// through a bitcoin transaction, or they can be claimed by signing a message
+// that has received bitcoins.
+
 import (
+	"bitbucket.org/ortutay/bitnet/util"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -11,7 +26,6 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	log "github.com/golang/glog"
-	"github.com/ortutay/bitnet/util"
 	"math/big"
 	"sort"
 	"strconv"
@@ -29,6 +43,7 @@ const MaxMessageBytes = 100000 // 100KB
 
 // TODO(ortutay): We may want to tweak these constants, and/or make them flag
 // configurable.
+// Calculate a price in tokens for storing messages.
 const assumedBitcoinPrice = uint64(500) // Use approximate rate of $500/BTC
 const satoshisPerBitcoin = uint64(1e8)
 const storeMessageUSDPrice = float64(.00000001) // 1 penny stores 1M messages
@@ -50,10 +65,13 @@ func (ba *BitcoinAddress) String() string {
 	return string(*ba)
 }
 
+// Structs implementing this interface provide a hash of their data for signing
+// by a private key.
 type SignableHasher interface {
 	SignableHash() []byte
 }
 
+// CheckSig checks a signature against a public key.
 func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) bool {
 	sigBytes, err := base64.StdEncoding.DecodeString(sigStr)
 	if err != nil {
@@ -68,6 +86,7 @@ func CheckSig(sigStr string, hasher SignableHasher, pubKey *btcec.PublicKey) boo
 	return sig.Verify(hasher.SignableHash(), pubKey)
 }
 
+// GetSig generates a signature from a private key.
 func GetSig(hasher SignableHasher, privKey *btcec.PrivateKey) (string, error) {
 	sig, err := privKey.Sign(hasher.SignableHash())
 	if err != nil {
@@ -76,6 +95,7 @@ func GetSig(hasher SignableHasher, privKey *btcec.PrivateKey) (string, error) {
 	return base64.StdEncoding.EncodeToString(sig.Serialize()), nil
 }
 
+// GetSigBitcoin generates a Bitcoin style signature from a private key.
 func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr string, netParams *btcnet.Params) (string, error) {
 	fullMessage := BitcoinSigMagic + hex.EncodeToString(hasher.SignableHash())
 	compressed, err := isCompressed(privKey, btcAddr, netParams)
@@ -92,6 +112,7 @@ func GetSigBitcoin(hasher SignableHasher, privKey *btcec.PrivateKey, btcAddr str
 	return base64.StdEncoding.EncodeToString(sigBytes), nil
 }
 
+// Section is part of a Message.
 type Section struct {
 	// Expected headers:
 	// - "datetime": RFC 3339 date/time
@@ -129,6 +150,8 @@ func (s *Section) AddHeader(field string, value string) {
 	s.Headers[field] = append(s.Headers[field], value)
 }
 
+// Message is the core data structure. It is what clients send and receive to
+// communicate.
 type Message struct {
 	Plaintext Section
 	Encrypted string
@@ -191,6 +214,8 @@ func validatePubKey(pubKeys []string) error {
 	return nil
 }
 
+// Check recognized header fields, and return error if they are not in the
+// expected format.
 func (m *Message) Validate() error {
 	// TODO(ortutay): Add a max expires-datetime?
 
@@ -246,23 +271,25 @@ func (m *Message) Validate() error {
 	return nil
 }
 
+// Query represents a filter that matches based on the message headers. The
+// supported operators are operators =, !=, <, >, <= and >=.
+//
+// Examples:
+//
+//   Headers["some-field ="] = "value"
+//   Headers["some-field !="] = "value"
+//   Headers["some-field >="] = "value"
+//   Headers["some-field"] = "value"    (= is assumed if no operator is given)
+//
+// The = and != operators will do a string comparison on the values.
+// The <, >, <=, >= operators will attempt to convert both strings into
+// numbers, and do a numerical comparison.
+//
+// TODO(ortutay): We can use gt, lt, gte, lte to indicate string order
+// comparison.
+// TODO(ortutay): We can use the ~ operator to indicate a hex-encoded Blooom
+// filter.
 type Query struct {
-	// Match based on the message headers. The operators =, !=, <, >, <= and >=
-	// are supported.
-	// Examples:
-	//
-	//   Headers["some-field ="] = "value"
-	//   Headers["some-field !="] = "value"
-	//   Headers["some-field >="] = "value"
-	//
-	// The = and != operators will do a string comparison on the values.
-	// The <, >, <=, >= operators will attempt to convert both strings into
-	// numbers, and do a numerical comparison.
-	//
-	// TODO(ortutay): We can use gt, lt, gte, lte to indicate string order
-	// comparison.
-	// TODO(ortutay): We can use the ~ operator to indicate a hex-encoded Blooom
-	// filter.
 	Headers map[string]string
 }
 
@@ -296,6 +323,7 @@ func (q *Query) Validate() error {
 	return nil
 }
 
+// Matches returns true if a Message matches a Query.
 func (q *Query) Matches(msg *Message) bool {
 	if err := q.Validate(); err != nil {
 		log.Errorf("Invalid query %v: %v", q, err)
@@ -313,20 +341,6 @@ func (q *Query) Matches(msg *Message) bool {
 			values[0] = msgHash
 		} else {
 			values, ok = msg.Plaintext.Headers[field]
-		}
-		if field == "datetime" {
-			timestamps := make([]string, len(values))
-			for i, value := range values {
-				t, err := time.Parse(time.RFC3339, value)
-				if err == nil {
-					timestamps[i] = strconv.FormatInt(t.Unix(), 10)
-				}
-			}
-			t, err := time.Parse(time.RFC3339, target)
-			if err == nil {
-				target = strconv.FormatInt(t.Unix(), 10)
-			}
-			values = timestamps
 		}
 		switch op {
 		case "=":
@@ -384,6 +398,23 @@ func (q *Query) Matches(msg *Message) bool {
 	return true
 }
 
+// The Challenge RPC is used by the client to request a challenge string.
+// Challenge strings are used in signatures, to prevent replay attacks.
+type ChallengeArgs struct {
+}
+
+type ChallengeReply struct {
+	Challenge string // Challenge to be used for signature.
+}
+
+// Tokens are associated with a public key, and are stored as a balance on the
+// server. The model is a trust based private ledger, and generally tokens are
+// used for anti-spam, to prevent a client from flooding the server with
+// hundreds of messages and eating up all the storage space.
+//
+// When the a client wishes to consume some tokens, he signs a message
+// specifying the amount of tokens to spend, the public key holding the tokens,
+// and a challenge string (to prevent replay attacks).
 type TokenTransaction struct {
 	Challenge string // Challenge from the server.
 	Amount    int64  // Amount to spend. Use -1 to indicate server decides.
@@ -398,12 +429,10 @@ func (t *TokenTransaction) SignableHash() []byte {
 	return h.Sum([]byte{})
 }
 
-// Token management
-// TODO(ortutay): nonce/sig on each Args/Reply struct? generally, want some
-// system for server auth
-// TODO(ortutay): BIP 70
+// The RequestPaymentDetails RPC is used to get information on how to purchase
+// tokens from the server.
+// TODO(ortutay): Use BIP 70 instead.
 type RequestPaymentDetailsArgs struct {
-	Amount int64
 }
 
 type RequestPaymentDetailsReply struct {
@@ -411,6 +440,7 @@ type RequestPaymentDetailsReply struct {
 	Sig     string         // Signature by the server's private key.
 }
 
+// The BuyTokens RPC is used to purchase tokens from the server.
 type BuyTokensArgs struct {
 	RawTx  string // Raw bitcoin transaction that pays for the tokens.
 	PubKey string // Public key where the sever sends tokens.
@@ -419,6 +449,12 @@ type BuyTokensArgs struct {
 type BuyTokensReply struct {
 }
 
+// The ClaimTokens RPC is used to get tokens by signing a bitcoin address.
+// Typically, a server will grant tokens if address has ever received bitcoins.
+// Addresses can only be used to claim tokens once. This provides some level of
+// anti-spam protection, since an spammer would, at least, be slowed by the
+// conformation speed of the bitcoin network. The server may also implement
+// checks for transaction fees on the addresses.
 type ClaimTokensArgs struct {
 	Challenge      string // Challenge from the server.
 	PubKey         string // Public key where the sever sends tokens.
@@ -437,13 +473,8 @@ func (a *ClaimTokensArgs) SignableHash() []byte {
 type ClaimTokensReply struct {
 }
 
-type ChallengeArgs struct {
-}
-
-type ChallengeReply struct {
-	Challenge string // Challenge to be used for signature.
-}
-
+// The GetBalance RPC is used by the client to check the number of tokens a
+// public key holds.
 type GetBalanceArgs struct {
 	Challenge string // Challenge from the server.
 	PubKey    string // Public key to get balance for.
@@ -461,6 +492,8 @@ type GetBalanceReply struct {
 	Balance uint64
 }
 
+// The Burn RPC is used to spend tokens on nothing at all. Mainly used for
+// testing.
 type BurnArgs struct {
 	Tokens TokenTransaction
 }
@@ -468,7 +501,8 @@ type BurnArgs struct {
 type BurnReply struct {
 }
 
-// Sending and getting messages
+// The StoreMessage RPC is used to store a message on the server. Typically,
+// the server will charge some number of tokens to store messages.
 type StoreMessageArgs struct {
 	Tokens  TokenTransaction
 	Message Message
@@ -477,17 +511,10 @@ type StoreMessageArgs struct {
 type StoreMessageReply struct {
 }
 
-type ListMessagesArgs struct {
-	Tokens TokenTransaction
-	Query  Query
-}
-
-type ListMessagesReply struct {
-	MessageHashes  []string
-	MessageHeaders []map[string]string
-	Sig            string
-}
-
+// The GetMessages RPC is used to get messages from the server that match some
+// query.
+// TODO(ortutay): We may want to add an optional tokens parameter to this as
+// well.
 type GetMessagesArgs struct {
 	Query Query
 }
@@ -497,16 +524,7 @@ type GetMessagesReply struct {
 	Sig      string // TODO(ortutay): what is this for??
 }
 
-func doSHA256(data []byte) ([]byte, error) {
-	h := sha256.New()
-	_, err := h.Write(data)
-	if err != nil {
-		return nil, err
-	}
-	b := h.Sum([]byte{})
-	return b, nil
-}
-
+// Is the bitcoin address using a compressed public key?
 func isCompressed(privKey *btcec.PrivateKey, addr string, netParams *btcnet.Params) (bool, error) {
 	btcPubKey := (btcec.PublicKey)(privKey.PublicKey)
 	serCompressed := btcPubKey.SerializeCompressed()
