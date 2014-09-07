@@ -15,7 +15,6 @@ package bitnet
 // that has received bitcoins.
 
 import (
-	"bitbucket.org/ortutay/bitnet/util"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -26,6 +25,7 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	log "github.com/golang/glog"
+	"github.com/ortutay/bitnet/util"
 	"math/big"
 	"sort"
 	"strconv"
