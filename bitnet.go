@@ -342,6 +342,22 @@ func (q *Query) Matches(msg *Message) bool {
 		} else {
 			values, ok = msg.Plaintext.Headers[field]
 		}
+
+		if field == "datetime" {
+			timestamps := make([]string, len(values))
+			for i, value := range values {
+				t, err := time.Parse(time.RFC3339, value)
+				if err == nil {
+					timestamps[i] = strconv.FormatInt(t.Unix(), 10)
+				}
+			}
+			t, err := time.Parse(time.RFC3339, target)
+			if err == nil {
+				target = strconv.FormatInt(t.Unix(), 10)
+			}
+			values = timestamps
+		}
+
 		switch op {
 		case "=":
 			if !ok && target != "" {
